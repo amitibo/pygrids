@@ -12,6 +12,8 @@ DTYPEd = np.double
 ctypedef np.double_t DTYPEd_t
 DTYPEi32 = np.int32
 ctypedef np.int32_t DTYPEi32_t
+DTYPEi = np.int
+ctypedef np.int_t DTYPEi_t
 
 
 def slimGrids(grids):
@@ -31,17 +33,19 @@ def calcCrossings(Y, X, Z, p0, p1):
     #
     # Collect the inter indices (grid crossings)
     #
+    cdef int i
+    cdef int j
     indices = []
     start_indices = []
     for i, coords in enumerate((Y, X, Z)):
         i0, i1 = np.searchsorted(coords, [p0[i], p1[i]])
         start_indices.append(i0-1)
         if i0 == i1:
-            indices.append(np.ones(0, dtype=np.int32))
+            indices.append(np.ones(0, dtype=np.int))
         elif i0 < i1:
-            indices.append(np.arange(i0, i1).reshape((1, -1)))
+            indices.append(np.arange(i0, i1, dtype=np.int))
         else:
-            indices.append(np.arange(i0-1, i1-1, -1).reshape((1, -1)))
+            indices.append(np.arange(i0-1, i1-1, -1, dtype=np.int))
 
     start_indices = np.array(start_indices, dtype=np.int32).reshape((-1, 1))
     
@@ -77,13 +81,25 @@ def calcCrossings(Y, X, Z, p0, p1):
     #
     # calculate the indices of the voxels
     #
-    lengths = [0] + [inds.size for inds in indices]
-    new_indices = -np.ones((3, np.sum(lengths)), dtype=np.int32)
+    lengths = [inds.size for inds in indices]
+    cdef np.ndarray[DTYPEi_t, ndim=2] new_indices = -np.ones((3, np.sum(lengths)+1), dtype=np.int)
+    cdef int start
+    cdef int length
+    cdef np.ndarray[DTYPEi_t, ndim=1] np_inds
     for i in range(3):
-        new_indices[i, lengths[i]:lengths[i]+lengths[i+1]] = indices[i]
-    new_indices = np.hstack((start_indices, new_indices[:, order]))
+        start = 1
+        length = lengths[i]
+        np_inds = indices[i]
+        new_indices[i, 0] = start_indices[i, 0]
+        for j in range(length):
+            new_indices[i, start + j] = np_inds[j]
+        start += length
+            
+    new_indices[:, 1:] = new_indices[:, order]
+    
+    length = new_indices.shape[1]
     for i in range(3):
-        for j in range(new_indices.shape[1]):
+        for j in range(1, length):
             if new_indices[i, j] == -1:
                 new_indices[i, j] = new_indices[i, j-1]
                 

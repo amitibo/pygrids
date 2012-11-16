@@ -2,4 +2,4 @@
 A utility package for grid manipulations
 """
 
-from .utils import point2grids
+from cygrids import point2grids

@@ -2,9 +2,16 @@
 """
 
 from __future__ import division
-import numpy as np
 import scipy.sparse as sps
 import itertools
+import numpy as np
+cimport numpy as np
+import cython
+
+DTYPEd = np.double
+ctypedef np.double_t DTYPEd_t
+DTYPEi32 = np.int32
+ctypedef np.int32_t DTYPEi32_t
 
 
 def slimGrids(grids):
@@ -20,32 +27,6 @@ def slimGrids(grids):
     return slim_grids
 
         
-class GridsEnumerate(object):
-    """
-    """
-    def __init__(self, Y, X, H):
-        self.Y_iter = np.asarray(Y).flat
-        self.X_iter = np.asarray(X).flat
-        self.H_iter = np.asarray(H).flat
-
-    def next(self):
-        """
-        Standard iterator method, returns the index tuple and arrays values.
-
-        Returns
-        -------
-        coords : tuple of ints
-            The indices of the current iteration.
-        valuess : scalar
-            The grids elements of the current iteration.
-
-        """
-        return self.Y_iter.coords, (self.Y_iter.next(), self.X_iter.next(), self.H_iter.next())
-
-    def __iter__(self):
-        return self
-
-
 def calcCrossings(Y, X, Z, p0, p1):
     #
     # Collect the inter indices (grid crossings)
@@ -127,25 +108,36 @@ def calcCrossings(Y, X, Z, p0, p1):
     return r, indices
 
 
-def point2grids(point, Y, X, H):
+@cython.boundscheck(False)
+def point2grids(point, Y, X, Z):
     
-    Y_slim, X_slim, H_slim = slimGrids((Y, X, H))
-    p1 = np.array(point).reshape((-1, 1))
+    Y_slim, X_slim, Z_slim = slimGrids((Y, X, Z))
 
     data = []
     indices = []
     indptr = [0]
 
-    for coords, p2 in GridsEnumerate(Y, X, H):
-        p2 = np.array(p2).reshape((-1, 1)) + 0.5
-        r, ind = calcCrossings(Y_slim, X_slim, H_slim, p1, p2)
-        if (np.linalg.norm(p2-p1) - np.sum(r)) > 10**-6:
-            print np.linalg.norm(p2-p1), np.sum(r), coords, p1, p2
-            raise Exception('Bad distances')
+    cdef np.ndarray[DTYPEd_t, ndim=1] np_Y = np.array(Y, dtype=DTYPEd, order='C', copy=False).ravel()
+    cdef np.ndarray[DTYPEd_t, ndim=1] np_X = np.array(X, dtype=DTYPEd, order='C', copy=False).ravel()
+    cdef np.ndarray[DTYPEd_t, ndim=1] np_Z = np.array(Z, dtype=DTYPEd, order='C', copy=False).ravel()
+
+    p1 = np.array(point).reshape((-1, 1))
+    cdef np.ndarray[DTYPEd_t, ndim=2] np_p2 = np.zeros((3, 1), dtype=DTYPEd, order='C')
+    
+    cdef int grid_size = Y.size
+    cdef int i = 0
+    for i in range(grid_size):
+        np_p2[0, 0] = np_Y[i] + 0.5
+        np_p2[1, 0] = np_X[i] + 0.5
+        np_p2[2, 0] = np_Z[i] + 0.5
+        r, ind = calcCrossings(Y_slim, X_slim, Z_slim, p1, np_p2)
+        #if (np.linalg.norm(p2-p1) - np.sum(r)) > 10.0**-6:
+            #print np.linalg.norm(p2-p1), np.sum(r), i, j, k p1, p2
+            #raise Exception('Bad distances')
         data.append(r)
         indices.append(ind)
         indptr.append(indptr[-1]+r.size)
-    
+
     data = np.hstack(data)
     indices = np.hstack(indices)
     

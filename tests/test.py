@@ -15,13 +15,13 @@ def main():
     
     params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 10, 0.5), # Y
-            slice(0, 10, 0.5), # X
-            slice(0, 10, 0.5)  # H
+            slice(0, 10, 0.2), # Y
+            slice(0, 10, 0.2), # X
+            slice(0, 10, 0.2)  # H
             ),
     )
     
-    camera_center = (4.5, 4.5, 0.5)
+    camera_center = (4.5, 0.5, 0.5)
 
     Y, X, H = np.mgrid[params.cartesian_grids]
 

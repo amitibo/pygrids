@@ -30,14 +30,14 @@ class GridsEnumerate(object):
 
     def next(self):
         """
-        Standard iterator method, returns the index tuple and array value.
+        Standard iterator method, returns the index tuple and arrays values.
 
         Returns
         -------
         coords : tuple of ints
             The indices of the current iteration.
-        vals : scalar
-            The array element of the current iteration.
+        valuess : scalar
+            The grids elements of the current iteration.
 
         """
         return self.Y_iter.coords, (self.Y_iter.next(), self.X_iter.next(), self.H_iter.next())
@@ -47,7 +47,6 @@ class GridsEnumerate(object):
 
 
 def calcCrossings(Y, X, Z, p0, p1):
-    
     #
     # Collect the inter indices (grid crossings)
     #
@@ -77,6 +76,9 @@ def calcCrossings(Y, X, Z, p0, p1):
         sort_index = i
         new_points.append(d/d[i] * (coords[inds]-p0[i]) + p0)
     
+    #
+    # Check whether the start and end points are in the same voxel
+    #
     if new_points == []:
         indices = np.ravel_multi_index(start_indices, dims=(Y.size, X.size, Z.size))
         r = np.sqrt(np.sum(d * d))
@@ -91,6 +93,9 @@ def calcCrossings(Y, X, Z, p0, p1):
         order = order[::-1]
     new_points = np.hstack((p0, new_points[:, order], p1))
 
+    #
+    # calculate the indices of the voxels
+    #
     lengths = [0] + [inds.size for inds in indices]
     new_indices = -np.ones((3, np.sum(lengths)), dtype=np.int32)
     for i in range(3):
@@ -102,13 +107,19 @@ def calcCrossings(Y, X, Z, p0, p1):
                 new_indices[i, j] = new_indices[i, j-1]
                 
     #
-    # Calculate distance between points
+    # Calculate path segments length
     #
     r = new_points[:, 1:] - new_points[:, :-1]
     r = np.sqrt(np.sum(r*r, axis=0))
     
+    #
+    # Translate the voxel coordinates to indices
+    #
     indices = np.ravel_multi_index(new_indices, dims=(Y.size, X.size, Z.size))
     
+    #
+    # Order the indices
+    #
     if indices[0] > indices[-1]:
         indices = indices[::-1]
         r = r[::-1]

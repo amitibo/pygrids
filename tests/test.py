@@ -15,7 +15,7 @@ def main():
     
     params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 10., 0.2), # Y
+            slice(0, 10., 0.1), # Y
             slice(0, 10., 0.2), # X
             slice(0, 10., 0.2)  # H
             ),

@@ -17,6 +17,19 @@ DTYPEi = np.int
 ctypedef np.int_t DTYPEi_t
 
 
+def slimGrids(grids):
+    """Calculate open grids from full grids"""
+
+    slim_grids = []
+    for dim, grid in enumerate(grids):
+        sli = [0] * len(grid.shape)
+        sli[dim] = Ellipsis
+        grid = grid[sli]
+        slim_grids.append(np.ascontiguousarray(grid.ravel()))
+
+    return slim_grids
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef inline np.intp_t local_argsearch_left(double [:] grid, double key):
@@ -35,19 +48,6 @@ cdef inline np.intp_t local_argsearch_left(double [:] grid, double key):
 
     return imin
     
-
-def slimGrids(grids):
-    """Calculate open grids from full grids"""
-
-    slim_grids = []
-    for dim, grid in enumerate(grids):
-        sli = [0] * len(grid.shape)
-        sli[dim] = Ellipsis
-        grid = grid[sli]
-        slim_grids.append(np.ascontiguousarray(grid.ravel()))
-
-    return slim_grids
-
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -103,7 +103,13 @@ cdef inline bool interpolatePoints(
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef calcCrossings(Y, X, Z, p0, p1):
+cdef calcCrossings(
+    double[:] Y,
+    double[:] X,
+    double[:] Z,
+    double[:] p0,
+    double[:] p1
+    ):
     #
     # Collect the inter indices (grid crossings)
     #
@@ -112,6 +118,8 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     cdef np.intp_t x_i0, x_i1, y_i0, y_i1, z_i0, z_i1
     cdef dimx = X.size
     cdef dimz = Z.size
+    cdef double tmpd
+    cdef int tmpi
     
     #
     # 5 - just searchsorted
@@ -132,8 +140,10 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     #
     # Calculate inter points (grid crossings)
     #
-    # 6 sec
-    d = p1 - p0
+    cdef double[:] d = np.empty(3)
+    d[0] = p1[0] - p0[0]
+    d[1] = p1[1] - p0[1]
+    d[2] = p1[2] - p0[2]
     points_num = abs(y_i1 - y_i0) + abs(x_i1 - x_i0) + abs(z_i1 - z_i0)
 
     #
@@ -145,7 +155,10 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     cdef int[:] indices = np_indices
     
     if points_num == 0:
-        r[0] = sqrt(np.sum(d * d))
+        tmpd = 0
+        for i in range(3):
+            tmpd += (d[i] - d[i])**2
+        r[0] = sqrt(tmpd)
         indices[0] = start_indices[0]*dimx + start_indices[1]*dimz + start_indices[2]
         return np_r, np_indices
     
@@ -192,8 +205,6 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     #
     # Calculate path segments length
     #
-    cdef double tmpd
-    cdef int tmpi
     for j in range(points_num+1):
         tmpd = 0
         for i in range(3):

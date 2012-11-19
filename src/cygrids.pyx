@@ -1,7 +1,6 @@
 """
 """
 
-from __future__ import division
 import scipy.sparse as sps
 import itertools
 import numpy as np
@@ -18,44 +17,24 @@ DTYPEi = np.int
 ctypedef np.int_t DTYPEi_t
 
 
-#static int
-#local_argsearch_left(PyArrayObject *arr, PyArrayObject *key,
-                     #PyArrayObject *sorter, PyArrayObject *ret)
-#{
-    #PyArray_CompareFunc *compare = PyArray_DESCR(key)->f->compare;
-    #npy_intp nelts = PyArray_DIMS(arr)[PyArray_NDIM(arr) - 1];
-    #npy_intp nkeys = PyArray_SIZE(key);
-    #char *parr = PyArray_DATA(arr);
-    #char *pkey = PyArray_DATA(key);
-    #npy_intp *psorter = (npy_intp *)PyArray_DATA(sorter);
-    #npy_intp *pret = (npy_intp *)PyArray_DATA(ret);
-    #int elsize = PyArray_DESCR(arr)->elsize;
-    #npy_intp i;
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef inline np.intp_t local_argsearch_left(double [:] grid, double key):
 
-    #for (i = 0; i < nkeys; ++i) {
-        #npy_intp imin = 0;
-        #npy_intp imax = nelts;
-        #while (imin < imax) {
-            #npy_intp imid = imin + ((imax - imin) >> 1);
-            #npy_intp indx = psorter[imid];
+    cdef np.intp_t imin = 0
+    cdef np.intp_t imax = grid.size
+    cdef np.intp_t imid
+    
+    while imin < imax:
+        imid = imin + ((imax - imin) >> 1)
+        
+        if grid[imid] < key:
+            imin = imid + 1
+        else:
+            imax = imid
 
-            #if (indx < 0 || indx >= nelts) {
-                #return -1;
-            #}
-            #if (compare(parr + elsize*indx, pkey, key) < 0) {
-                #imin = imid + 1;
-            #}
-            #else {
-                #imax = imid;
-            #}
-        #}
-        #*pret = imin;
-        #pret += 1;
-        #pkey += elsize;
-    #}
-    #return 0;
-#}
-
+    return imin
+    
 
 def slimGrids(grids):
     """Calculate open grids from full grids"""
@@ -70,6 +49,8 @@ def slimGrids(grids):
     return slim_grids
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cdef inline bool interpolatePoints(
     double[:] grid,
     np.intp_t i0,
@@ -120,6 +101,8 @@ cdef inline bool interpolatePoints(
     return True
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cdef calcCrossings(Y, X, Z, p0, p1):
     #
     # Collect the inter indices (grid crossings)
@@ -135,11 +118,15 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     # 10 - all loop
     #
     cdef int[:] start_indices = np.empty(3, dtype=int,)
-    y_i0, y_i1 = np.searchsorted(Y, [p0[0], p1[0]])
+    
+    y_i0 = local_argsearch_left(Y, p0[0])
+    y_i1 = local_argsearch_left(Y, p1[0])
+    x_i0 = local_argsearch_left(X, p0[1])
+    x_i1 = local_argsearch_left(X, p1[1])
+    z_i0 = local_argsearch_left(Z, p0[2])
+    z_i1 = local_argsearch_left(Z, p1[2])
     start_indices[0] = y_i0-1
-    x_i0, x_i1 = np.searchsorted(X, [p0[1], p1[1]])
     start_indices[1] = x_i0-1
-    z_i0, z_i1 = np.searchsorted(Z, [p0[2], p1[2]])
     start_indices[2] = z_i1-1
     
     #
@@ -174,9 +161,6 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     if interpolatePoints(Z, z_i0, z_i1, abs(y_i1 - y_i0)+abs(x_i1 - x_i0), 2, p0, d, I, P):
         sort_index = 2
 
-    print np_I
-    print np_P
-    
     #
     # Sort points according to their order
     #
@@ -197,9 +181,6 @@ cdef calcCrossings(Y, X, Z, p0, p1):
             SI[i, j+1] = I[i, order[j]]
             SP[i, j+1] = P[i, order[j]]
 
-    print np_SI
-    print np_SP
-    
     #
     # 0.3 sec
     #
@@ -207,8 +188,6 @@ cdef calcCrossings(Y, X, Z, p0, p1):
         for j in range(points_num+1):
             if SI[i, j] == -1:
                 SI[i, j] = SI[i, j-1]
-    
-    print np_SI
     
     #
     # Calculate path segments length
@@ -221,8 +200,6 @@ cdef calcCrossings(Y, X, Z, p0, p1):
             tmpd += (SP[i, j+1] - SP[i, j])**2
         r[j] = sqrt(tmpd)
         indices[j] = SI[0, j]*dimx + SI[1, j]*dimz + SI[2, j]
-    
-    print np_r, np_indices
     
     #
     # Order the indices
@@ -240,6 +217,7 @@ cdef calcCrossings(Y, X, Z, p0, p1):
     return np_r, np_indices
 
 
+@cython.boundscheck(False)
 def point2grids(point, Y, X, Z):
     
     Y_slim, X_slim, Z_slim = slimGrids((Y, X, Z))
@@ -263,8 +241,6 @@ def point2grids(point, Y, X, Z):
         p2[1] = np_X[i] + 0.5
         p2[2] = np_Z[i] + 0.5
         r, ind = calcCrossings(Y_slim, X_slim, Z_slim, p1, p2)
-        print p1, np_p2
-        print r, ind
         #if (np.linalg.norm(p2-p1) - np.sum(r)) > 10.0**-6:
             #print np.linalg.norm(p2-p1), np.sum(r), i, j, k p1, p2
             #raise Exception('Bad distances')

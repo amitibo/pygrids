@@ -255,7 +255,7 @@ def point2grids(point, Y, X, Z):
         indptr.append(indptr[-1]+r.size)
 
     #
-    # Create the sparse matrix
+    # Form the sparse transform matrix
     #
     data = np.hstack(data)
     indices = np.hstack(indices)
@@ -334,6 +334,9 @@ def direction2grids(phi, theta, Y, X, Z):
         indices.append(ind)
         indptr.append(indptr[-1]+r.size)
 
+    #
+    # Form the sparse transform matrix
+    #
     data = np.hstack(data)
     indices = np.hstack(indices)
     

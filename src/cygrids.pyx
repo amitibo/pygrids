@@ -2,7 +2,6 @@
 """
 
 import scipy.sparse as sps
-import itertools
 import numpy as np
 cimport numpy as np
 import cython
@@ -17,17 +16,25 @@ DTYPEi = np.int
 ctypedef np.int_t DTYPEi_t
 
 
-def slimGrids(grids):
-    """Calculate open grids from full grids"""
+def processGrids(grids):
+    """Calculate open grids and centered grids"""
 
-    slim_grids = []
+    open_grids = []
+    centered_grids = []
+    
     for dim, grid in enumerate(grids):
         sli = [0] * len(grid.shape)
         sli[dim] = Ellipsis
-        grid = grid[sli]
-        slim_grids.append(np.ascontiguousarray(grid.ravel()))
-
-    return slim_grids
+        open_grid = grid[sli].ravel()
+        open_grid = np.hstack((open_grid, 2*open_grid[-1]-open_grid[-2]))
+        open_grids.append(np.ascontiguousarray(open_grid))
+        
+        vec_shape = [1] * len(grid.shape)
+        vec_shape[dim] = -1
+        centered_grid = grid + (open_grid[1:] - open_grid[:-1]).reshape(vec_shape) / 2
+        centered_grids.append(np.ascontiguousarray(centered_grid))
+        
+    return centered_grids, open_grids
 
 
 @cython.boundscheck(False)
@@ -116,8 +123,8 @@ cdef calcCrossings(
     cdef np.intp_t i, j, k, sort_index
     cdef np.intp_t points_num
     cdef np.intp_t x_i0, x_i1, y_i0, y_i1, z_i0, z_i1
-    cdef dimx = X.size
-    cdef dimz = Z.size
+    cdef np.intp_t dimx = X.size - 1
+    cdef np.intp_t dimz = Z.size - 1
     cdef double tmpd
     cdef int tmpi
     
@@ -195,7 +202,7 @@ cdef calcCrossings(
             SP[i, j+1] = P[i, order[j]]
 
     #
-    # 0.3 sec
+    # Fillup the missing indices in the different dimensions
     #
     for i in range(3):
         for j in range(points_num+1):
@@ -215,7 +222,6 @@ cdef calcCrossings(
     #
     # Order the indices
     #
-    # 0 sec
     if indices[0] > indices[points_num]:
         for j in range(points_num+1):
             tmpd = r[j]
@@ -231,30 +237,133 @@ cdef calcCrossings(
 @cython.boundscheck(False)
 def point2grids(point, Y, X, Z):
     
-    Y_slim, X_slim, Z_slim = slimGrids((Y, X, Z))
+    #
+    # Calculate open and centered grids
+    #
+    (Y, X, Z), (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
+
+    cdef DTYPEd_t [:] p_Y = Y.ravel()
+    cdef DTYPEd_t [:] p_X = X.ravel()
+    cdef DTYPEd_t [:] p_Z = Z.ravel()
+
+    p1 = np.array(point, order='C').ravel()
+    cdef double[:] p2 = np.empty(3)
 
     data = []
     indices = []
     indptr = [0]
-
-    cdef DTYPEd_t [:] np_Y = np.array(Y, dtype=DTYPEd, order='C', copy=False).ravel()
-    cdef DTYPEd_t [:] np_X = np.array(X, dtype=DTYPEd, order='C', copy=False).ravel()
-    cdef DTYPEd_t [:] np_Z = np.array(Z, dtype=DTYPEd, order='C', copy=False).ravel()
-
-    p1 = np.array(point, order='C').ravel()
-    np_p2 = np.empty(3)
-    cdef double[:] p2 = np_p2
-    
     cdef int grid_size = Y.size
     cdef int i = 0
     for i in xrange(grid_size):
-        p2[0] = np_Y[i] + 0.5
-        p2[1] = np_X[i] + 0.5
-        p2[2] = np_Z[i] + 0.5
-        r, ind = calcCrossings(Y_slim, X_slim, Z_slim, p1, p2)
-        #if (np.linalg.norm(p2-p1) - np.sum(r)) > 10.0**-6:
-            #print np.linalg.norm(p2-p1), np.sum(r), i, j, k p1, p2
-            #raise Exception('Bad distances')
+        #
+        # Process next voxel
+        #
+        p2[0] = p_Y[i]
+        p2[1] = p_X[i]
+        p2[2] = p_Z[i]
+        
+        #
+        # Calculate crossings for line between p1 and p2
+        #
+        r, ind = calcCrossings(Y_open, X_open, Z_open, p1, p2)
+        
+        #
+        # Accomulate the crossings for the sparse matrix
+        #
+        data.append(r)
+        indices.append(ind)
+        indptr.append(indptr[-1]+r.size)
+
+    #
+    # Create the sparse matrix
+    #
+    data = np.hstack(data)
+    indices = np.hstack(indices)
+    
+    H_dist = sps.csr_matrix(
+        (data, indices, indptr),
+        shape=(Y.size, Y.size)
+    )
+    
+    return H_dist
+    
+
+def limitDGrids(DGrid, Grid, lower_limit, upper_limit):
+    LI = (Grid + DGrid) < lower_limit
+    if np.any(LI):
+        ratio = (lower_limit - Grid[LI]) / DGrid[LI]
+        DGrid[LI] = DGrid[LI] * ratio
+        
+    LI = (Grid + DGrid) > upper_limit
+    if np.any(LI):
+        ratio = (upper_limit - Grid[LI]) / DGrid[LI]
+        DGrid[LI] = DGrid[LI] * ratio
+    
+    return DGrid
+    
+
+@cython.boundscheck(False)
+def direction2grids(phi, theta, Y, X, Z):
+    
+    #
+    # Calculate open and centered grids
+    #
+    (Y, X, Z), (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
+
+    cdef DTYPEd_t [:] p_Y = Y.ravel()
+    cdef DTYPEd_t [:] p_X = X.ravel()
+    cdef DTYPEd_t [:] p_Z = Z.ravel()
+
+    #
+    # Calculate the intersection with the TOA (Top Of Atmosphere)
+    #
+    toa = np.max(Z_open)
+    DZ = toa - Z
+    DX = DZ * np.cos(phi) * np.tan(theta)
+    DY = DZ * np.sin(phi) * np.tan(theta)
+
+    #
+    # Check crossing with any of the sides
+    #
+    DY = limitDGrids(DY, Y, np.min(Y_open), np.max(Y_open))
+    DX = limitDGrids(DX, X, np.min(X_open), np.max(X_open))
+    DZ = limitDGrids(DZ, Z, np.min(Z_open), np.max(Z_open))
+    
+    cdef DTYPEd_t [:] p_DY = DY.ravel()
+    cdef DTYPEd_t [:] p_DX = DX.ravel()
+    cdef DTYPEd_t [:] p_DZ = DZ.ravel()
+
+    cdef double[:] p1 = np.empty(3)
+    cdef double[:] p2 = np.empty(3)
+    
+    data = []
+    indices = []
+    indptr = [0]
+    cdef int grid_size = Y.size
+    cdef int i = 0
+    for i in xrange(grid_size):
+        #
+        # Center of each voxel
+        #
+        p1[0] = p_Y[i]
+        p1[1] = p_X[i]
+        p1[2] = p_Z[i]
+        
+        #
+        # Intersection of the ray with the TOA
+        #
+        p2[0] = p1[0] + p_DY[i]
+        p2[1] = p1[1] + p_DX[i]
+        p2[2] = p1[2] + p_DZ[i]
+        
+        #
+        # Calculate crossings for line between p1 and p2
+        #
+        r, ind = calcCrossings(Y_open, X_open, Z_open, p1, p2)
+        
+        #
+        # Accomulate the crossings for the sparse matrix
+        #
         data.append(r)
         indices.append(ind)
         indptr.append(indptr[-1]+r.size)

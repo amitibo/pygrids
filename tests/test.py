@@ -10,21 +10,23 @@ import time
 import mayavi.mlab as mlab
 
 
-def main():
+atmosphere_params = amitibo.attrClass(
+    cartesian_grids=(
+        slice(0, 400., 20), # Y
+        slice(0, 400., 20), # X
+        slice(0, 400., 20)  # H
+        ),
+)
+
+camera_center = (200, 200, 0.1)
+phi = np.pi/4
+theta = np.pi/4
+Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+
+
+def point():
     """Main doc """
     
-    params = amitibo.attrClass(
-        cartesian_grids=(
-            slice(0, 10., 0.1), # Y
-            slice(0, 10., 0.2), # X
-            slice(0, 10., 0.2)  # H
-            ),
-    )
-    
-    camera_center = (4.5, 0.5, 0.5)
-
-    Y, X, H = np.mgrid[params.cartesian_grids]
-
     t0 = time.time()
     
     H_dist = grids.point2grids(camera_center, Y, X, H)
@@ -38,7 +40,24 @@ def main():
     mlab.show()
     
 
+def direction():
+    """Main doc """
+    
+    t0 = time.time()
+    
+    H_dist = grids.direction2grids(phi, theta, Y, X, H)
+    
+    print time.time() - t0
+
+    x = np.ones(Y.size).reshape((-1, 1))
+    y = H_dist * x
+    
+    amitibo.viz3D(Y, X, H, y.reshape(Y.shape))
+    mlab.show()
+    
+
 if __name__ == '__main__':
-    main()
+    #point()
+    direction()
 
       

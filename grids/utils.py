@@ -47,6 +47,10 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
     # Calculate open and centered grids
     #
     (Y, X, Z), (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
+    
+    #
+    # Calculate the unit vector direction for each voxel
+    #
     Y = Y - camera_center[0]
     X = X - camera_center[1]
     Z = Z - camera_center[2]
@@ -54,6 +58,10 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
     Y = Y/R
     X = X/R
     Z = Z/R
+    
+    #
+    # Calculate the radius of each voxel
+    #
     R_voxel = np.sqrt(
         (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))**2 +
         (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))**2 +
@@ -61,7 +69,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
     )
     
     #
-    # Calculate the relation between sensor pixel and line of sight (LOS) vector
+    # Calculate the relation between sensor pixel and line of sight (LOS) unit vector
     #
     Y_sensor, X_sensor = np.mgrid[-1:1:complex(0, image_res), -1:1:complex(0, image_res)]
     PHI_los = np.arctan2(Y_sensor, X_sensor) + np.pi
@@ -95,13 +103,13 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
         #
         # Calculate the distance between all voxels to the ray.
         #
-        D = np.abs(R * sin_THETA)
-        R_cone = np.abs(R * cos_THETA) * pixel_fov
+        D_voxel_ray = np.abs(R * sin_THETA)
+        R_cone = R * cos_THETA * pixel_fov
         
         #
-        # Check intersecting Indices
+        # Find voxels intersecting the cone
         #
-        II = (R_cone + R_voxel) > D
+        II = ((R_cone + R_voxel) > D_voxel_ray) * (cos_THETA > 0)
         nnz_inds = np.flatnonzero(II)
         indices.append(nnz_inds)
         data.append(np.ones(nnz_inds.size) / nnz_inds.size)

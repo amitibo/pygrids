@@ -13,18 +13,18 @@ import matplotlib.pyplot as plt
 
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 300., 3), # Y
-        slice(0, 300., 3), # X
-        slice(0, 300., 3)  # H
+        slice(0, 300., 10), # Y
+        slice(0, 300., 10), # X
+        slice(0, 300., 10)  # H
         ),
 )
 
 camera_center = (150.0, 150.0, .2)
-phi = np.pi/4
+phi = np.pi/8
 theta = np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
 sensor_res = 128
-pixel_fov = 0.1
+pixel_fov = 0.03
 
 
 def point():
@@ -37,8 +37,9 @@ def point():
     print time.time() - t0
 
     #x = np.ones(Y.size).reshape((-1, 1))
-    x = (H>100).reshape((-1, 1)).astype(np.float)
-    y = H_dist * x
+    x = np.exp(-H/10)
+    x[H<100] = 0
+    y = H_dist * x.reshape((-1, 1))
 
     amitibo.viz3D(Y, X, H, x.reshape(Y.shape), interpolation='nearest_neighbour')
     amitibo.viz3D(Y, X, H, y.reshape(Y.shape), interpolation='nearest_neighbour')
@@ -54,7 +55,7 @@ def direction():
     
     print time.time() - t0
 
-    x = (Y<10).reshape((-1, 1)).astype(np.float)
+    x = (Y<100).reshape((-1, 1)).astype(np.float)
     #x = np.ones(Y.size).reshape((-1, 1))
     y = H_dist * x
     
@@ -70,8 +71,11 @@ def integrate():
     
     print time.time() - t0
 
-    x = (Y<50).reshape((-1, 1))
-    y = H_int * x
+    x = np.ones(Y.shape)
+    #x = np.exp(-H/10)
+    x[X<150] = 0
+    y = H_int * x.reshape((-1, 1))
+
 
     plt.imshow(y.reshape((sensor_res, sensor_res)))
     plt.colorbar()
@@ -79,8 +83,8 @@ def integrate():
         
 
 if __name__ == '__main__':
-    point()
+    #point()
     #direction()
-    #integrate()
+    integrate()
 
       

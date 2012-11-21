@@ -76,7 +76,7 @@ cdef inline bool interpolatePoints(
             # Calculate the indices of the points
             #
             if j == dim:
-                I[j, i] = k
+                I[j, i] = dt
 
             #
             # Interpolate the value at the point
@@ -108,26 +108,12 @@ cdef calcCrossings(
     cdef double tmpd
     cdef int tmpi
     
-    #
-    # 5 - just searchsorted
-    # 10 - all loop
-    #
-    cdef int[:] start_indices = np.empty(3, dtype=int,)
-    cdef int[:] end_indices = np.empty(3, dtype=int,)
-    
     y_i0 = local_argsearch_left(Y, p0[0])
     y_i1 = local_argsearch_left(Y, p1[0])
     x_i0 = local_argsearch_left(X, p0[1])
     x_i1 = local_argsearch_left(X, p1[1])
     z_i0 = local_argsearch_left(Z, p0[2])
     z_i1 = local_argsearch_left(Z, p1[2])
-    
-    start_indices[0] = y_i0-1 # TODO: Is it currect to decrease? Doesn't it depend on the relative position compared to p1
-    start_indices[1] = x_i0-1
-    start_indices[2] = z_i0-1
-    end_indices[0] = y_i1-1 # TODO: Is it currect to decrease? Doesn't it depend on the relative position compared to p1
-    end_indices[1] = x_i1-1
-    end_indices[2] = z_i1-1
     
     #
     # Calculate inter points (grid crossings)
@@ -156,10 +142,10 @@ cdef calcCrossings(
         for i in range(3):
             tmpd += (d[i] - d[i])**2
         r[0] = sqrt(tmpd)
-        indices[0] = dimz*(dimx*start_indices[0] + start_indices[1]) + start_indices[2]
+        indices[0] = dimz*(dimx*(y_i0-1) + x_i0-1) + z_i0-1
         return np_r, np_indices
     
-    np_I = -np.ones((3, points_num), dtype=DTYPEi)
+    np_I = np.zeros((3, points_num), dtype=DTYPEi)
     np_P = np.empty((3, points_num))
     cdef int[:, ::1] I = np_I
     cdef double[:, ::1] P = np_P
@@ -182,33 +168,30 @@ cdef calcCrossings(
     cdef int[:, ::1] SI = np_SI
     cdef double[:, ::1] SP = np_SP
     
+    SI[0, 0] = y_i0-1
+    SI[1, 0] = x_i0-1
+    SI[2, 0] = z_i0-1
+    SI[0, points_num+1] = y_i1-1
+    SI[1, points_num+1] = x_i1-1
+    SI[2, points_num+1] = z_i1-1
+    SP[0, 0] = p0[0]
+    SP[1, 0] = p0[1]
+    SP[2, 0] = p0[2]
+    SP[0, points_num+1] = p1[0]
+    SP[1, points_num+1] = p1[1]
+    SP[2, points_num+1] = p1[2]
+    
     if p0[sort_index] > p1[sort_index]:
         for i in range(3):        
-             SI[i, 0] = end_indices[i]
-             SI[i, points_num+1] = start_indices[i]
-             SP[i, 0] = p1[i]
-             SP[i, points_num+1] = p0[i]
-             for j in range(points_num):
-                 SI[i, j+1] = I[i, order[points_num-1-j]]
+            for j in range(points_num):
+                 SI[i, j+1] = SI[i, j] + I[i, order[points_num-1-j]]
                  SP[i, j+1] = P[i, order[points_num-1-j]]
     else:
         for i in range(3):        
-             SI[i, 0] = start_indices[i]
-             SI[i, points_num+1] = end_indices[i]
-             SP[i, 0] = p0[i]
-             SP[i, points_num+1] = p1[i]
-             for j in range(points_num):
-                 SI[i, j+1] = I[i, order[j]]
+            for j in range(points_num):
+                 SI[i, j+1] = SI[i, j] + I[i, order[j]]
                  SP[i, j+1] = P[i, order[j]]
 
-    #
-    # Fillup the missing indices in the different dimensions
-    #
-    for i in range(3):
-        for j in range(points_num+1):
-            if SI[i, j] == -1:
-                SI[i, j] = SI[i, j-1]
-    
     #
     # Calculate path segments length
     #
@@ -230,7 +213,7 @@ cdef calcCrossings(
             tmpi = indices[j]
             indices[j] = indices[points_num-j]
             indices[points_num-j] = tmpi
-            
+
     return np_r, np_indices
 
 

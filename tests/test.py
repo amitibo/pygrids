@@ -13,13 +13,13 @@ import matplotlib.pyplot as plt
 
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400., 10), # Y
-        slice(0, 400., 10), # X
-        slice(0, 400., 10)  # H
+        slice(0, 300., 3), # Y
+        slice(0, 300., 3), # X
+        slice(0, 300., 3)  # H
         ),
 )
 
-camera_center = (200.0, 200.0, 0.5)
+camera_center = (150.0, 150.0, .2)
 phi = np.pi/4
 theta = np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
@@ -37,11 +37,11 @@ def point():
     print time.time() - t0
 
     #x = np.ones(Y.size).reshape((-1, 1))
-    x = (Y<100).reshape((-1, 1)).astype(np.float)
+    x = (H>100).reshape((-1, 1)).astype(np.float)
     y = H_dist * x
 
-    amitibo.viz3D(Y, X, H, x.reshape(Y.shape))
-    amitibo.viz3D(Y, X, H, y.reshape(Y.shape))
+    amitibo.viz3D(Y, X, H, x.reshape(Y.shape), interpolation='nearest_neighbour')
+    amitibo.viz3D(Y, X, H, y.reshape(Y.shape), interpolation='nearest_neighbour')
     mlab.show()
     
 

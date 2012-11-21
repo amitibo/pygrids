@@ -62,7 +62,7 @@ cdef inline bool interpolatePoints(
         dt = -1
     else:
         dt = 1
-        
+    
     #
     # Loop on the dimension
     #
@@ -113,6 +113,7 @@ cdef calcCrossings(
     # 10 - all loop
     #
     cdef int[:] start_indices = np.empty(3, dtype=int,)
+    cdef int[:] end_indices = np.empty(3, dtype=int,)
     
     y_i0 = local_argsearch_left(Y, p0[0])
     y_i1 = local_argsearch_left(Y, p1[0])
@@ -120,9 +121,13 @@ cdef calcCrossings(
     x_i1 = local_argsearch_left(X, p1[1])
     z_i0 = local_argsearch_left(Z, p0[2])
     z_i1 = local_argsearch_left(Z, p1[2])
-    start_indices[0] = y_i0-1
+    
+    start_indices[0] = y_i0-1 # TODO: Is it currect to decrease? Doesn't it depend on the relative position compared to p1
     start_indices[1] = x_i0-1
-    start_indices[2] = z_i1-1
+    start_indices[2] = z_i0-1
+    end_indices[0] = y_i1-1 # TODO: Is it currect to decrease? Doesn't it depend on the relative position compared to p1
+    end_indices[1] = x_i1-1
+    end_indices[2] = z_i1-1
     
     #
     # Calculate inter points (grid crossings)
@@ -134,19 +139,24 @@ cdef calcCrossings(
     points_num = abs(y_i1 - y_i0) + abs(x_i1 - x_i0) + abs(z_i1 - z_i0)
 
     #
-    # Check whether the start and end points are in the same voxel
+    # Note:
+    # The np_r, np_indices arrays are declared separately
+    # as these are values that are returned from the function.
     #
     np_r = np.empty(points_num+1)
     np_indices = np.empty(points_num+1, dtype=DTYPEi)
     cdef double[:] r = np_r
     cdef int[:] indices = np_indices
     
+    #
+    # Check whether the start and end points are in the same voxel
+    #
     if points_num == 0:
         tmpd = 0
         for i in range(3):
             tmpd += (d[i] - d[i])**2
         r[0] = sqrt(tmpd)
-        indices[0] = start_indices[0]*dimx + start_indices[1]*dimz + start_indices[2]
+        indices[0] = dimz*(dimx*start_indices[0] + start_indices[1]) + start_indices[2]
         return np_r, np_indices
     
     np_I = -np.ones((3, points_num), dtype=DTYPEi)
@@ -162,24 +172,34 @@ cdef calcCrossings(
         sort_index = 2
 
     #
-    # Sort points according to their order
+    # Sort points according to their spatial order
     #
-    cdef int[:] order = np.argsort(P[sort_index, :]).astype(int)
-    if p0[sort_index] > p1[sort_index]:
-        order = order[::-1]
+    np_order = np.argsort(P[sort_index, :]).astype(int)
+    cdef int[:] order = np_order
 
-    np_SI = np.empty((3, points_num+1), dtype=DTYPEi)
+    np_SI = np.empty((3, points_num+2), dtype=DTYPEi)
     np_SP = np.empty((3, points_num+2))
     cdef int[:, ::1] SI = np_SI
     cdef double[:, ::1] SP = np_SP
     
-    for i in range(3):        
-        SI[i, 0] = start_indices[i]
-        SP[i, 0] = p0[i]
-        SP[i, points_num+1] = p1[i]
-        for j in range(points_num):
-            SI[i, j+1] = I[i, order[j]]
-            SP[i, j+1] = P[i, order[j]]
+    if p0[sort_index] > p1[sort_index]:
+        for i in range(3):        
+             SI[i, 0] = end_indices[i]
+             SI[i, points_num+1] = start_indices[i]
+             SP[i, 0] = p1[i]
+             SP[i, points_num+1] = p0[i]
+             for j in range(points_num):
+                 SI[i, j+1] = I[i, order[points_num-1-j]]
+                 SP[i, j+1] = P[i, order[points_num-1-j]]
+    else:
+        for i in range(3):        
+             SI[i, 0] = start_indices[i]
+             SI[i, points_num+1] = end_indices[i]
+             SP[i, 0] = p0[i]
+             SP[i, points_num+1] = p1[i]
+             for j in range(points_num):
+                 SI[i, j+1] = I[i, order[j]]
+                 SP[i, j+1] = P[i, order[j]]
 
     #
     # Fillup the missing indices in the different dimensions
@@ -197,7 +217,7 @@ cdef calcCrossings(
         for i in range(3):
             tmpd += (SP[i, j+1] - SP[i, j])**2
         r[j] = sqrt(tmpd)
-        indices[j] = SI[0, j]*dimx + SI[1, j]*dimz + SI[2, j]
+        indices[j] = dimz*(dimx*SI[0, j] + SI[1, j]) + SI[2, j]
     
     #
     # Order the indices
@@ -227,7 +247,8 @@ def point2grids(point, Y, X, Z):
     cdef DTYPEd_t [:] p_Z = Z.ravel()
 
     p1 = np.array(point, order='C').ravel()
-    cdef double[:] p2 = np.empty(3)
+    np_p2 = np.empty(3)    
+    cdef double[:] p2 = np_p2
 
     data = []
     indices = []
@@ -246,7 +267,7 @@ def point2grids(point, Y, X, Z):
         # Calculate crossings for line between p1 and p2
         #
         r, ind = calcCrossings(Y_open, X_open, Z_open, p1, p2)
-        
+
         #
         # Accomulate the crossings for the sparse matrix
         #

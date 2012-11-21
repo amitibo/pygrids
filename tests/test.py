@@ -19,12 +19,13 @@ atmosphere_params = amitibo.attrClass(
         ),
 )
 
-camera_center = (200, 200, 0.1)
+camera_center = (200.0, 200.0, 0.5)
 phi = np.pi/4
 theta = np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
 sensor_res = 128
 pixel_fov = 0.1
+
 
 def point():
     """Main doc """
@@ -35,9 +36,11 @@ def point():
     
     print time.time() - t0
 
-    x = np.ones(Y.size).reshape((-1, 1))
+    #x = np.ones(Y.size).reshape((-1, 1))
+    x = (Y<100).reshape((-1, 1)).astype(np.float)
     y = H_dist * x
-    
+
+    amitibo.viz3D(Y, X, H, x.reshape(Y.shape))
     amitibo.viz3D(Y, X, H, y.reshape(Y.shape))
     mlab.show()
     
@@ -51,7 +54,8 @@ def direction():
     
     print time.time() - t0
 
-    x = np.ones(Y.size).reshape((-1, 1))
+    x = (Y<10).reshape((-1, 1)).astype(np.float)
+    #x = np.ones(Y.size).reshape((-1, 1))
     y = H_dist * x
     
     amitibo.viz3D(Y, X, H, y.reshape(Y.shape))
@@ -66,16 +70,17 @@ def integrate():
     
     print time.time() - t0
 
-    x = (Y>np.max(Y)*2/3).reshape((-1, 1))
+    x = (Y<50).reshape((-1, 1))
     y = H_int * x
 
     plt.imshow(y.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
     plt.show()
         
 
 if __name__ == '__main__':
-    #point()
+    point()
     #direction()
-    integrate()
+    #integrate()
 
       

@@ -20,8 +20,8 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_center = (150.0, 150.0, .2)
-phi = np.pi/8
-theta = np.pi/4
+phi = 0
+theta = -np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
 sensor_res = 128
 pixel_fov = 0.03
@@ -52,10 +52,10 @@ def direction():
     t0 = time.time()
     
     H_dist = grids.direction2grids(phi, theta, Y, X, H)
-    
+
     print time.time() - t0
 
-    x = (Y<100).reshape((-1, 1)).astype(np.float)
+    x = (Y<150).reshape((-1, 1)).astype(np.float)
     #x = np.ones(Y.size).reshape((-1, 1))
     y = H_dist * x
     
@@ -71,12 +71,14 @@ def integrate():
     
     print time.time() - t0
 
-    x = np.ones(Y.shape)
-    #x = np.exp(-H/10)
-    x[X<150] = 0
+    #x = np.ones(Y.shape)
+    x = np.exp(-H/10)
+    x[X<200] = 0
     y = H_int * x.reshape((-1, 1))
 
 
+    amitibo.viz3D(Y, X, H, x.reshape(Y.shape))
+    mlab.show()
     plt.imshow(y.reshape((sensor_res, sensor_res)))
     plt.colorbar()
     plt.show()

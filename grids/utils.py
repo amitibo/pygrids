@@ -29,17 +29,17 @@ def processGrids(grids):
 
 
 def limitDGrids(DGrid, Grid, lower_limit, upper_limit):
-    LI = (Grid + DGrid) < lower_limit
-    if np.any(LI):
-        ratio = (lower_limit - Grid[LI]) / DGrid[LI]
-        DGrid[LI] = DGrid[LI] * ratio
-        
-    LI = (Grid + DGrid) > upper_limit
-    if np.any(LI):
-        ratio = (upper_limit - Grid[LI]) / DGrid[LI]
-        DGrid[LI] = DGrid[LI] * ratio
+    ratio = np.ones_like(DGrid)
     
-    return DGrid
+    Ll = (Grid + DGrid) < lower_limit
+    if np.any(Ll):
+        ratio[Ll] = (lower_limit - Grid[Ll]) / DGrid[Ll]
+        
+    Lh = (Grid + DGrid) > upper_limit
+    if np.any(Lh):
+        ratio[Lh] = (upper_limit - Grid[Lh]) / DGrid[Lh]
+    
+    return ratio, Ll + Lh
     
 
 def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
@@ -112,7 +112,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
         II = ((R_cone + R_voxel) > D_voxel_ray) * (cos_THETA > 0)
         nnz_inds = np.flatnonzero(II)
         indices.append(nnz_inds)
-        data.append(np.ones(nnz_inds.size) / nnz_inds.size)
+        data.append(np.ones(nnz_inds.size)/ R[II]**2)
         indptr.append(indptr[-1]+nnz_inds.size)
 
     #

@@ -16,6 +16,7 @@ ctypedef np.int32_t DTYPEi32_t
 DTYPEi = np.int
 ctypedef np.int_t DTYPEi_t
 
+DEF eps = 1e-10
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -168,12 +169,12 @@ cdef calcCrossings(
     cdef int[:, ::1] SI = np_SI
     cdef double[:, ::1] SP = np_SP
     
-    SI[0, 0] = y_i0-1
-    SI[1, 0] = x_i0-1
-    SI[2, 0] = z_i0-1
-    SI[0, points_num+1] = y_i1-1
-    SI[1, points_num+1] = x_i1-1
-    SI[2, points_num+1] = z_i1-1
+    SI[0, 0] = max(y_i0-1, 0)
+    SI[1, 0] = max(x_i0-1, 0)
+    SI[2, 0] = max(z_i0-1, 0)
+    SI[0, points_num+1] = max(y_i1-1, 0)
+    SI[1, points_num+1] = max(x_i1-1, 0)
+    SI[2, points_num+1] = max(z_i1-1, 0)
     SP[0, 0] = p0[0]
     SP[1, 0] = p0[1]
     SP[2, 0] = p0[2]
@@ -295,10 +296,22 @@ def direction2grids(phi, theta, Y, X, Z):
     #
     # Check crossing with any of the sides
     #
-    DY = limitDGrids(DY, Y, np.min(Y_open), np.max(Y_open))
-    DX = limitDGrids(DX, X, np.min(X_open), np.max(X_open))
-    DZ = limitDGrids(DZ, Z, np.min(Z_open), np.max(Z_open))
-    
+    ratio, L = limitDGrids(DY, Y, np.min(Y_open), np.max(Y_open))
+    if np.any(L):
+        DY[L] *= ratio[L]
+        DX[L] *= ratio[L]
+        DZ[L] *= ratio[L]
+    ratio, L = limitDGrids(DX, X, np.min(X_open), np.max(X_open))
+    if np.any(L):
+        DY[L] *= ratio[L]
+        DX[L] *= ratio[L]
+        DZ[L] *= ratio[L]
+    ratio, L = limitDGrids(DZ, Z, np.min(Z_open), np.max(Z_open))
+    if np.any(L):
+        DY[L] *= ratio[L]
+        DX[L] *= ratio[L]
+        DZ[L] *= ratio[L]
+
     cdef DTYPEd_t [:] p_DY = DY.ravel()
     cdef DTYPEd_t [:] p_DX = DX.ravel()
     cdef DTYPEd_t [:] p_DZ = DZ.ravel()
@@ -333,9 +346,15 @@ def direction2grids(phi, theta, Y, X, Z):
         
         #
         # Accomulate the crossings for the sparse matrix
+        # Note:
+        # I remove values lower than some epsilon value.
+        # This way I filter out numerical inacurracies and
+        # negative values.
         #
+        zr = r > eps
+        r = r[zr]
         data.append(r)
-        indices.append(ind)
+        indices.append(ind[zr])
         indptr.append(indptr[-1]+r.size)
 
     #

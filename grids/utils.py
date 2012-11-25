@@ -5,6 +5,7 @@ from __future__ import division
 import numpy as np
 import scipy.sparse as sps
 import itertools
+import amitibo
 
 
 def processGrids(grids):
@@ -42,7 +43,7 @@ def limitDGrids(DGrid, Grid, lower_limit, upper_limit):
     return ratio, Ll + Lh
     
 
-def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
+def integrateGrids_old(camera_center, Y, X, Z, image_res, pixel_fov):
     #
     # Calculate open and centered grids
     #
@@ -127,3 +128,111 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov):
     )
     
     return H_int
+
+
+def count_unique(keys):
+    filtered_keys = keys[keys>0]
+    if filtered_keys.size == 0:
+        return filtered_keys, filtered_keys
+    uniq_keys = np.unique(keys)
+    bins = uniq_keys.searchsorted(filtered_keys)
+    return uniq_keys, np.bincount(bins)
+
+
+def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov, grids_res=None):
+    
+    dummy, (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
+    
+    del dummy
+    
+    Y = Y - camera_center[0]
+    X = X - camera_center[1]
+    Z = Z - camera_center[2]
+    
+    #
+    # Calculate sub grids
+    #
+    if grids_res is None:
+        grids_res = (10, 10, 10)
+    resY, resX, resZ = grids_res
+    subgrid_size = resY*resX*resZ
+    
+    dY = (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))/resY
+    dX = (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))/resX
+    dZ = (Z_open[1:]-Z_open[:-1]).reshape((1, 1, -1))/resZ
+    
+    #
+    # Loop on all sub grids
+    #
+    I = np.empty((Y.size, subgrid_size), dtype=np.int)
+    for j, (dy, dx, dz) in enumerate(itertools.product(range(resY), range(resX), range(resZ))):
+        #
+        # Advance to next sub grid position
+        #
+        subY = Y + dY*dy
+        subX = X + dX*dx
+        subZ = Z + dZ*dz
+        
+        #
+        # Project the grids to the image space
+        #
+        subr2 = subY**2 + subX**2
+        subR2 = subr2 + subZ**2
+        THETA = np.arctan2(np.sqrt(subr2), subZ)
+        PHI = np.arctan2(subY, subX)
+        
+        R_sensor = THETA / np.pi * 2
+        R_sensor[R_sensor>1] = np.nan
+        Y_sensor = R_sensor * np.sin(PHI)
+        X_sensor = R_sensor * np.cos(PHI)
+        
+        #
+        # Calculate index of image pixel
+        #
+        Y_index = ((Y_sensor + 1)*image_res/2).astype(np.int)
+        X_index = ((X_sensor + 1)*image_res/2).astype(np.int)
+        I[:, j] = (Y_index * image_res + X_index).ravel()
+        
+    #
+    # Calculate the unique indices
+    #
+    data = []
+    indices = []
+    indptr = [0]
+    for i in xrange(I.shape[0]):
+        inds, counts = count_unique(I[i, :])
+        data.append(counts / subgrid_size)
+        indices.append(inds)
+        indptr.append(indptr[-1]+inds.size)
+        
+        #data.append(np.unique(I[i, :]))
+        
+    #
+    # Calculate repetitions
+    #
+    
+    #
+    # Create sparse matrix
+    #
+    data = np.hstack(data)
+    indices = np.hstack(indices)
+
+    H_int = sps.csr_matrix(
+        (data, indices, indptr),
+        shape=(Y.size, image_res*image_res)
+    )
+    
+    #
+    # Transpose matrix
+    #
+    H_int = H_int.transpose()
+    
+    #
+    # TODO: Weight by distance
+    #
+    return H_int
+
+    
+if __name__ == '__main__':
+    pass
+    

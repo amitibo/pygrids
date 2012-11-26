@@ -131,6 +131,8 @@ def integrateGrids_old(camera_center, Y, X, Z, image_res, pixel_fov):
 
 
 def count_unique(keys):
+    """count frequency of unique values in array. Negative values are ignored."""
+    
     filtered_keys = keys[keys>0]
     if filtered_keys.size == 0:
         return filtered_keys, filtered_keys
@@ -154,18 +156,18 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
     #
     if subgrid_res is None:
         subgrid_res = (10, 10, 10)
-    resY, resX, resZ = subgrid_res
-    subgrid_size = resY*resX*resZ
+    sub_resY, sub_resX, sub_resZ = subgrid_res
+    subgrid_size = sub_resY*sub_resX*sub_resZ
     
-    dY = (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))/resY
-    dX = (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))/resX
-    dZ = (Z_open[1:]-Z_open[:-1]).reshape((1, 1, -1))/resZ
+    dY = (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))/sub_resY
+    dX = (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))/sub_resX
+    dZ = (Z_open[1:]-Z_open[:-1]).reshape((1, 1, -1))/sub_resZ
     
     #
     # Loop on all sub grids
     #
     I = np.empty((Y.size, subgrid_size), dtype=np.int)
-    for j, (dy, dx, dz) in enumerate(itertools.product(range(resY), range(resX), range(resZ))):
+    for j, (dy, dx, dz) in enumerate(itertools.product(range(sub_resY), range(sub_resX), range(sub_resZ))):
         #
         # Advance to next sub grid position
         #
@@ -181,6 +183,12 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
         THETA = np.arctan2(np.sqrt(subr2), subZ)
         PHI = np.arctan2(subY, subX)
         
+        #
+        # Note:
+        # Non valid values are set to NaN. When converting to np.int, the NaN values
+        # become negative (min interger value). These are ignored in the count_unique
+        # function.
+        #
         R_sensor = THETA / np.pi * 2
         R_sensor[R_sensor>1] = np.nan
         Y_sensor = R_sensor * np.sin(PHI)

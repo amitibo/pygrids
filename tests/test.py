@@ -129,9 +129,43 @@ def integrate3():
     mlab.show()
         
 
+def integrate4():
+    
+    """Compare two different resolutions"""
+    
+    H_int1 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1))
+    H_int2 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(10, 10, 10))
+    
+    x = np.ones(Y.shape)
+    y1 = H_int1 * x.reshape((-1, 1))
+    y2 = H_int2 * x.reshape((-1, 1))
+
+    sio.savemat(
+        'img4_1.mat',
+        {
+            'y1': y1.reshape((sensor_res, sensor_res)),
+            'y2': y2.reshape((sensor_res, sensor_res)),
+            'H1': H_int1,
+            'H2': H_int2
+        }
+    )
+    
+    
+    plt.gray()
+    plt.imshow(y1.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(y2.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(np.abs(y1-y2).reshape((sensor_res, sensor_res)))
+    plt.colorbar()    
+    plt.show()
+          
+
 if __name__ == '__main__':
     #point()
     #direction()
-    integrate2()
+    integrate4()
 
       

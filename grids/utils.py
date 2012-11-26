@@ -134,12 +134,12 @@ def count_unique(keys):
     filtered_keys = keys[keys>0]
     if filtered_keys.size == 0:
         return filtered_keys, filtered_keys
-    uniq_keys = np.unique(keys)
+    uniq_keys = np.unique(filtered_keys)
     bins = uniq_keys.searchsorted(filtered_keys)
     return uniq_keys, np.bincount(bins)
 
 
-def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov, grids_res=None):
+def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
     
     dummy, (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
     
@@ -152,9 +152,9 @@ def integrateGrids(camera_center, Y, X, Z, image_res, pixel_fov, grids_res=None)
     #
     # Calculate sub grids
     #
-    if grids_res is None:
-        grids_res = (10, 10, 10)
-    resY, resX, resZ = grids_res
+    if subgrid_res is None:
+        subgrid_res = (10, 10, 10)
+    resY, resX, resZ = subgrid_res
     subgrid_size = resY*resX*resZ
     
     dY = (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))/resY

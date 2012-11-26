@@ -9,22 +9,23 @@ import amitibo
 import time
 import mayavi.mlab as mlab
 import matplotlib.pyplot as plt
+import scipy.io as sio
 
 
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 300., 5), # Y
-        slice(0, 300., 5), # X
-        slice(0, 300., 5)  # H
+        slice(0, 10., 0.10), # Y
+        slice(0, 10., 0.10), # X
+        slice(0, 10., 0.10)  # H
         ),
 )
 
-camera_center = (150.0, 150.0, .2)
+camera_center = (5.0, 5.0, .2)
 phi = 0
 theta = -np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-sensor_res = 128
-pixel_fov = np.tan(np.arccos((sensor_res**2 - 1)/sensor_res**2))
+sensor_res = 32
+pixel_fov = np.tan(np.arccos((sensor_res**2 - 1)/sensor_res**2)) * 10
 
 
 def point():
@@ -92,21 +93,40 @@ def integrate2():
     
     t0 = time.time()
     
-    H_int = grids.integrateGrids(camera_center, Y, X, H, sensor_res, pixel_fov)
+    H_int = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(10, 10, 10))
     
     print time.time() - t0
 
-    #x = np.ones(Y.shape)
-    x = np.exp(-H/10)
-    x[X<200] = 0
+    x = np.ones(Y.shape)
+    #x = np.exp(-H/10)
+    #x[X<200] = 0
     y = H_int * x.reshape((-1, 1))
 
 
-    amitibo.viz3D(Y, X, H, x.reshape(Y.shape))
-    mlab.show()
+    #amitibo.viz3D(Y, X, H, x.reshape(Y.shape))
+    #mlab.show()
+    sio.savemat('img3.mat', {'y': y.reshape((sensor_res, sensor_res)), 'H':H_int})
     plt.imshow(y.reshape((sensor_res, sensor_res)))
     plt.colorbar()
     plt.show()
+        
+
+def integrate3():
+    
+    t0 = time.time()
+    
+    H_int = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(40, 40, 1))
+    
+    print time.time() - t0
+
+    x = np.zeros((sensor_res, sensor_res))
+    x[:, range(0, sensor_res, 2)] = 1
+    x[range(0, sensor_res, 2), :] = 1    
+    #x[int(sensor_res/2), range(0, sensor_res, 4)] = 1
+    y = H_int.T * x.reshape((-1, 1))
+
+    amitibo.viz3D(Y, X, H, y.reshape(Y.shape))
+    mlab.show()
         
 
 if __name__ == '__main__':

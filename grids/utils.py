@@ -141,7 +141,7 @@ def count_unique(keys):
     return uniq_keys, np.bincount(bins)
 
 
-def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
+def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0):
     
     dummy, (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
     
@@ -171,9 +171,9 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
         #
         # Advance to next sub grid position
         #
-        subY = Y + dY*dy
-        subX = X + dX*dx
-        subZ = Z + dZ*dz
+        subY = Y + dY*dy + np.random.randn(*Y.shape) * noise
+        subX = X + dX*dx + np.random.randn(*Y.shape) * noise
+        subZ = Z + dZ*dz + np.random.randn(*Y.shape) * noise
         
         #
         # Project the grids to the image space
@@ -212,8 +212,6 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None):
         data.append(counts / subgrid_size)
         indices.append(inds)
         indptr.append(indptr[-1]+inds.size)
-        
-        #data.append(np.unique(I[i, :]))
         
     #
     # Calculate repetitions

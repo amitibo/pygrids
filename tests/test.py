@@ -14,13 +14,13 @@ import scipy.io as sio
 
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 10., 0.10), # Y
-        slice(0, 10., 0.10), # X
-        slice(0, 10., 0.10)  # H
+        slice(0, 10., 0.1), # Y
+        slice(0, 10., 0.1), # X
+        slice(0, 10., 0.1)  # H
         ),
 )
 
-camera_center = (5.0, 5.0, .2)
+camera_center = (5.05, 5.05, .05)
 phi = 0
 theta = -np.pi/4
 Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
@@ -133,15 +133,101 @@ def integrate4():
     
     """Compare two different resolutions"""
     
-    H_int1 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1))
-    H_int2 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(10, 10, 10))
+    H_int1 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1), noise=0)
+    H_int2 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1), noise=0.05)
+    H_int3 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(10, 10, 10), noise=0)
+    
+    x = np.ones(Y.shape)
+    y1 = H_int1 * x.reshape((-1, 1))
+    y2 = H_int2 * x.reshape((-1, 1))
+    y3 = H_int3 * x.reshape((-1, 1))
+
+    sio.savemat(
+        'img4_2.mat',
+        {
+            'y1': y1.reshape((sensor_res, sensor_res)),
+            'y2': y2.reshape((sensor_res, sensor_res)),
+            'y3': y3.reshape((sensor_res, sensor_res)),
+            'H1': H_int1,
+            'H2': H_int2,
+            'H3': H_int3
+        }
+    )
+    
+    plt.gray()
+    plt.imshow(y1.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(y2.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(y3.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(np.abs(y1-y3).reshape((sensor_res, sensor_res)))
+    plt.colorbar()    
+    plt.figure()
+    plt.imshow(np.abs(y2-y3).reshape((sensor_res, sensor_res)))
+    plt.colorbar()    
+    plt.show()
+          
+
+def integrate5():
+    
+    """Compare two different resolutions"""
+    
+    H_int1 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1), noise=0)
+    H_int2 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1), noise=0.05)
+    H_int3 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(40, 40, 1), noise=0)
+    
+    x = np.ones(Y.shape)
+    y1 = H_int1 * x.reshape((-1, 1))
+    y2 = H_int2 * x.reshape((-1, 1))
+    y3 = H_int3 * x.reshape((-1, 1))
+
+    sio.savemat(
+        'img5.mat',
+        {
+            'y1': y1.reshape((sensor_res, sensor_res)),
+            'y2': y2.reshape((sensor_res, sensor_res)),
+            'y3': y3.reshape((sensor_res, sensor_res)),
+            'H1': H_int1,
+            'H2': H_int2,
+            'H3': H_int3
+        }
+    )
+    
+    plt.gray()
+    plt.imshow(y1.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(y2.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(y3.reshape((sensor_res, sensor_res)))
+    plt.colorbar()
+    plt.figure()
+    plt.imshow(np.abs(y1-y3).reshape((sensor_res, sensor_res)))
+    plt.colorbar()    
+    plt.figure()
+    plt.imshow(np.abs(y2-y3).reshape((sensor_res, sensor_res)))
+    plt.colorbar()    
+    plt.show()
+          
+
+def integrate6():
+    
+    """Compare two different resolutions"""
+    
+    H_int1 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(1, 1, 1), noise=0.005)
+    H_int2 = grids.integrateGrids(camera_center, Y, X, H, sensor_res, subgrid_res=(10, 10, 10), noise=0)
     
     x = np.ones(Y.shape)
     y1 = H_int1 * x.reshape((-1, 1))
     y2 = H_int2 * x.reshape((-1, 1))
 
     sio.savemat(
-        'img4_1.mat',
+        'img6.mat',
         {
             'y1': y1.reshape((sensor_res, sensor_res)),
             'y2': y2.reshape((sensor_res, sensor_res)),
@@ -149,7 +235,6 @@ def integrate4():
             'H2': H_int2
         }
     )
-    
     
     plt.gray()
     plt.imshow(y1.reshape((sensor_res, sensor_res)))

@@ -57,8 +57,8 @@ class MyDialog(HasTraits):
         # Do not forget to call the parent's __init__
         HasTraits.__init__(self)
         
-        data = sio.loadmat('img4_2')
-        self.H = data['H3'].T
+        data = sio.loadmat('img6')
+        self.H = data['H2'].T
         
     @on_trait_change('scene.activated')
     def update_cone(self):

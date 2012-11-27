@@ -18,23 +18,24 @@ import numpy as np
 
 from traits.api import HasTraits, Instance, Button, \
     on_trait_change, Range, Tuple, Array
-from traitsui.api import View, Item, VSplit
+from traitsui.api import View, Item, VSplit, HSplit
 
 from mayavi import mlab
 from mayavi.core.ui.api import MlabSceneModel, SceneEditor
 
 import scipy.io as sio
-sensor_res = 32
+sensor_res = 128
 
 
 class MyDialog(HasTraits):
 
-    scene = Instance(MlabSceneModel, ())
+    scene1 = Instance(MlabSceneModel, ())
+    scene2 = Instance(MlabSceneModel, ())
 
     # The parameters for the Lorenz system, defaults to the standard ones.
-    x = Range(0, 10., 5, desc='pixel coord x', enter_set=True,
+    x = Range(0, 400., 200, desc='pixel coord x', enter_set=True,
               auto_set=False)
-    y = Range(0, 10., 5, desc='pixel coord y', enter_set=True,
+    y = Range(0, 400., 200, desc='pixel coord y', enter_set=True,
               auto_set=False)
 
     z = Range(0, 10., 5, desc='pixel coord z', enter_set=True,
@@ -47,16 +48,24 @@ class MyDialog(HasTraits):
 
     # The layout of the dialog created
     view = View(
-        VSplit(
-            Item('scene',
-                 editor=SceneEditor(), height=250,
-                 width=300),
-            'x',
-            'y',
-            'z',
-            'r',
-            show_labels=False,
-          ),
+        HSplit(
+            VSplit(
+                Item('scene1',
+                     editor=SceneEditor(), height=250,
+                     width=300),
+                'x',
+                'y',
+                'z',
+                'r',
+                show_labels=False,
+              ),
+            VSplit(
+                 Item('scene2',
+                      editor=SceneEditor(), height=250,
+                      width=300),
+                 show_labels=False,
+               ),
+            ),
         resizable=True,
     )
 
@@ -64,35 +73,39 @@ class MyDialog(HasTraits):
         # Do not forget to call the parent's __init__
         HasTraits.__init__(self)
         
-        data = sio.loadmat('img4_2')
+        data = sio.loadmat('img5')
         self.H = data['H3']
-        self.HT = data['H3'].T
         
-    @on_trait_change('scene.activated')
-    def update_cone(self):
-        mlab.clf(figure=self.scene.mayavi_scene)
+    @on_trait_change('scene1.activated')
+    def create_scene(self):
+        mlab.clf(figure=self.scene1.mayavi_scene)
         y, x, z = self.points
         r = (y-self.y)**2 + (x-self.x)**2 + (z-self.z)**2
         b = np.ones_like(y)
         b[r>self.r**2] = 0
         
-        self.src = mlab.pipeline.scalar_field(y, x, z, b, figure=self.scene.mayavi_scene)
-        ipw_x = mlab.pipeline.image_plane_widget(self.src, plane_orientation='x_axes', figure=self.scene.mayavi_scene)
-        ipw_y = mlab.pipeline.image_plane_widget(self.src, plane_orientation='y_axes', figure=self.scene.mayavi_scene)
-        ipw_z = mlab.pipeline.image_plane_widget(self.src, plane_orientation='z_axes', figure=self.scene.mayavi_scene)
+        self.src = mlab.pipeline.scalar_field(y, x, z, b, figure=self.scene1.mayavi_scene)
+        ipw_x = mlab.pipeline.image_plane_widget(self.src, plane_orientation='x_axes')
+        ipw_y = mlab.pipeline.image_plane_widget(self.src, plane_orientation='y_axes')
+        ipw_z = mlab.pipeline.image_plane_widget(self.src, plane_orientation='z_axes')
         mlab.colorbar()
         mlab.axes()
         
     @on_trait_change('x, y, z, r')
-    def update_img(self):
+    def update_volume(self):
         y, x, z = self.points
         r = (y-self.y)**2 + (x-self.x)**2 + (z-self.z)**2
         b = np.ones_like(y)
         b[r>self.r**2] = 0
         self.src.mlab_source.scalars = b
         
+        img = (self.H * b.reshape((-1, 1))).reshape((sensor_res, sensor_res))
+        mlab.clf(figure=self.scene2.mayavi_scene)
+        mlab.imshow(img, colormap='gray', figure=self.scene2.mayavi_scene)
+        mlab.colorbar()
+        
     def _points_default(self):
-        y, x, z = np.mgrid[0:10:0.1, 0:10:0.1, 0:10:0.1]
+        y, x, z = np.mgrid[0:400:4., 0:400:4., 0:10:0.1]
         return y, x, z
 
 

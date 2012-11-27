@@ -6,6 +6,10 @@ import numpy as np
 import scipy.sparse as sps
 import itertools
 import amitibo
+import time
+
+eps = np.finfo(np.float).eps
+eps32 = np.finfo(np.float32).eps
 
 
 def processGrids(grids):
@@ -130,15 +134,23 @@ def integrateGrids_old(camera_center, Y, X, Z, image_res, pixel_fov):
     return H_int
 
 
-def count_unique(keys):
+def count_unique(keys, dists):
     """count frequency of unique values in array. Negative values are ignored."""
     
-    filtered_keys = keys[keys>0]
+    nnzs = keys>0
+    filtered_keys = keys[nnzs]
+    filtered_dists = dists[nnzs]
     if filtered_keys.size == 0:
-        return filtered_keys, filtered_keys
-    uniq_keys = np.unique(filtered_keys)
-    bins = uniq_keys.searchsorted(filtered_keys)
-    return uniq_keys, np.bincount(bins)
+        return filtered_keys, filtered_dists
+    
+    uniq_keys, inv_indices = np.unique(filtered_keys, return_inverse=True)
+    uniq_dists = np.empty(uniq_keys.size)
+    
+    for i in range(uniq_keys.size):
+        d = filtered_dists[inv_indices == i]
+        uniq_dists[i] = d.sum()
+        
+    return uniq_keys, uniq_dists
 
 
 def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0):
@@ -150,7 +162,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
     Y = Y - camera_center[0]
     X = X - camera_center[1]
     Z = Z - camera_center[2]
-    
+   
     #
     # Calculate sub grids
     #
@@ -166,8 +178,9 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
     #
     # Loop on all sub grids
     #
-    I = np.empty((Y.size, subgrid_size), dtype=np.int)
-    for j, (dy, dx, dz) in enumerate(itertools.product(range(sub_resY), range(sub_resX), range(sub_resZ))):
+    I = np.empty((subgrid_size, Y.size), dtype=np.int16)
+    D = np.empty((subgrid_size, Y.size), dtype=np.float32)
+    for i, (dy, dx, dz) in enumerate(itertools.product(range(sub_resY), range(sub_resX), range(sub_resZ))):
         #
         # Advance to next sub grid position
         #
@@ -197,25 +210,26 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         #
         # Calculate index of image pixel
         #
-        Y_index = ((Y_sensor + 1)*image_res/2).astype(np.int)
-        X_index = ((X_sensor + 1)*image_res/2).astype(np.int)
-        I[:, j] = (Y_index * image_res + X_index).ravel()
+        Y_index = ((Y_sensor + 1)*image_res/2).astype(np.int16)
+        X_index = ((X_sensor + 1)*image_res/2).astype(np.int16)
+        I[i, :] = (Y_index * image_res + X_index).ravel()
+        D[i, :] = 1/(subR2.ravel() + eps32)
         
+    print 'end first stage %s' % time.asctime()
+    
     #
     # Calculate the unique indices
     #
     data = []
     indices = []
     indptr = [0]
-    for i in xrange(I.shape[0]):
-        inds, counts = count_unique(I[i, :])
-        data.append(counts / subgrid_size)
+    for j in xrange(I.shape[1]):
+        inds, dists = count_unique(I[:, j], D[:, j])
+        data.append(dists / subgrid_size)
         indices.append(inds)
         indptr.append(indptr[-1]+inds.size)
         
-    #
-    # Calculate repetitions
-    #
+    print 'end second stage %s' % time.asctime()
     
     #
     # Create sparse matrix
@@ -228,6 +242,8 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         shape=(Y.size, image_res*image_res)
     )
     
+    print 'end third stage %s' % time.asctime()
+
     #
     # Transpose matrix
     #

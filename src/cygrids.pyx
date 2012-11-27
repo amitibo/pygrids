@@ -131,7 +131,7 @@ cdef calcCrossings(
     # as these are values that are returned from the function.
     #
     np_r = np.empty(points_num+1)
-    np_indices = np.empty(points_num+1, dtype=DTYPEi)
+    np_indices = np.empty(points_num+1, dtype=DTYPEi32)
     cdef double[:] r = np_r
     cdef int[:] indices = np_indices
     
@@ -146,7 +146,7 @@ cdef calcCrossings(
         indices[0] = dimz*(dimx*(y_i0-1) + x_i0-1) + z_i0-1
         return np_r, np_indices
     
-    np_I = np.zeros((3, points_num), dtype=DTYPEi)
+    np_I = np.zeros((3, points_num), dtype=DTYPEi32)
     np_P = np.empty((3, points_num))
     cdef int[:, ::1] I = np_I
     cdef double[:, ::1] P = np_P
@@ -161,10 +161,10 @@ cdef calcCrossings(
     #
     # Sort points according to their spatial order
     #
-    np_order = np.argsort(P[sort_index, :]).astype(int)
+    np_order = np.argsort(P[sort_index, :]).astype(DTYPEi32)
     cdef int[:] order = np_order
 
-    np_SI = np.empty((3, points_num+2), dtype=DTYPEi)
+    np_SI = np.empty((3, points_num+2), dtype=DTYPEi32)
     np_SP = np.empty((3, points_num+2))
     cdef int[:, ::1] SI = np_SI
     cdef double[:, ::1] SP = np_SP

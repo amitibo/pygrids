@@ -184,9 +184,9 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         #
         # Advance to next sub grid position
         #
-        subY = Y + dY*dy + np.random.randn(*Y.shape) * noise
-        subX = X + dX*dx + np.random.randn(*Y.shape) * noise
-        subZ = Z + dZ*dz + np.random.randn(*Y.shape) * noise
+        subY = Y + dY*dy + (np.random.rand(*Y.shape)-0.5) * noise
+        subX = X + dX*dx + (np.random.rand(*Y.shape)-0.5) * noise
+        subZ = Z + dZ*dz + (np.random.rand(*Y.shape)-0.5) * noise
         
         #
         # Project the grids to the image space

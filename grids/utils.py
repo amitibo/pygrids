@@ -47,95 +47,8 @@ def limitDGrids(DGrid, Grid, lower_limit, upper_limit):
     return ratio, Ll + Lh
     
 
-def integrateGrids_old(camera_center, Y, X, Z, image_res, pixel_fov):
-    #
-    # Calculate open and centered grids
-    #
-    (Y, X, Z), (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
-    
-    #
-    # Calculate the unit vector direction for each voxel
-    #
-    Y = Y - camera_center[0]
-    X = X - camera_center[1]
-    Z = Z - camera_center[2]
-    R = np.sqrt(Y**2 + X**2 + Z**2)
-    Y = Y/R
-    X = X/R
-    Z = Z/R
-    
-    #
-    # Calculate the radius of each voxel
-    #
-    R_voxel = np.sqrt(
-        (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))**2 +
-        (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))**2 +
-        (Z_open[1:]-Z_open[:-1]).reshape((1, 1, -1))**2
-    )
-    
-    #
-    # Calculate the relation between sensor pixel and line of sight (LOS) unit vector
-    #
-    Y_sensor, X_sensor = np.mgrid[-1:1:complex(0, image_res), -1:1:complex(0, image_res)]
-    PHI_los = np.arctan2(Y_sensor, X_sensor) + np.pi
-    R_los = np.sqrt(X_sensor**2 + Y_sensor**2)
-    THETA_los = R_los * np.pi / 2
-    Y_los = np.sin(PHI_los) * np.sin(THETA_los)
-    X_los = np.cos(PHI_los) * np.sin(THETA_los)
-    Z_los = np.cos(THETA_los)
-    VIZ_los = R_los <= 1
-    
-    #
-    # Iterate on all sensor pixels
-    #
-    data = []
-    indices = []
-    indptr = [0]
-    for y_los, x_los, z_los, viz_los in itertools.izip(Y_los.flat, X_los.flat, Z_los.flat, VIZ_los.flat):
-        #
-        # Check if pixel is visible
-        #
-        if not viz_los:
-            indptr.append(indptr[-1])
-            continue
-        
-        #
-        # Calculate the angle between the voxel and the pixel ray
-        #
-        cos_THETA = (Y*y_los + X*x_los + Z*z_los)
-        sin_THETA = np.sqrt(1 - cos_THETA**2)
-        
-        #
-        # Calculate the distance between all voxels to the ray.
-        #
-        D_voxel_ray = np.abs(R * sin_THETA)
-        R_cone = R * cos_THETA * pixel_fov
-        
-        #
-        # Find voxels intersecting the cone
-        #
-        II = ((R_cone + R_voxel) > D_voxel_ray) * (cos_THETA > 0)
-        nnz_inds = np.flatnonzero(II)
-        indices.append(nnz_inds)
-        data.append(np.ones(nnz_inds.size)/ R[II]**2)
-        indptr.append(indptr[-1]+nnz_inds.size)
-
-    #
-    # Form the sparse transform matrix
-    #
-    data = np.hstack(data)
-    indices = np.hstack(indices)
-    
-    H_int = sps.csr_matrix(
-        (data, indices, indptr),
-        shape=(image_res*image_res, Y.size)
-    )
-    
-    return H_int
-
-
 def count_unique(keys, dists):
-    """count frequency of unique values in array. Negative values are ignored."""
+    """count frequency of unique values in array. non positive values are ignored."""
     
     nnzs = keys>0
     filtered_keys = keys[nnzs]
@@ -153,7 +66,7 @@ def count_unique(keys, dists):
     return uniq_keys, uniq_dists
 
 
-def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0):
+def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), noise=0):
     
     dummy, (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
     
@@ -162,31 +75,60 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
     Y = Y - camera_center[0]
     X = X - camera_center[1]
     Z = Z - camera_center[2]
-   
+    
+    Y1, X1, Z1 = np.mgrid[0:Y.shape[0], 0:Y.shape[1], 0:Y.shape[2]]
+    Y1 -= np.searchsorted(Y_open, camera_center[0])
+    X1 -= np.searchsorted(X_open, camera_center[1])
+    Z1 -= np.searchsorted(Z_open, camera_center[2])
+    R = np.sqrt(Y1**2 + X1**2 + Z1**2)
+    
+    del Y1, X1, Z1
+    
+    #
+    # Calculate the subpixel density
+    #
+    P = (100/(R+eps)).astype(np.int)
+    sub_resY, sub_resX, sub_resZ = subgrid_res
+    Py = P * sub_resY
+    Px = P * sub_resX
+    Pz = P * sub_resZ
+    
+    Py[Py>100] = 50
+    Py[Py<2] = 2
+    Px[Px>100] = 50
+    Px[Px<2] = 2
+    Pz[Pz>100] = 50
+    Pz[Pz<2] = 2
+
+    
     #
     # Calculate sub grids
     #
-    if subgrid_res is None:
-        subgrid_res = (10, 10, 10)
-    sub_resY, sub_resX, sub_resZ = subgrid_res
-    subgrid_size = sub_resY*sub_resX*sub_resZ
-    
-    dY = (Y_open[1:]-Y_open[:-1]).reshape((-1, 1, 1))/sub_resY
-    dX = (X_open[1:]-X_open[:-1]).reshape((1, -1, 1))/sub_resX
-    dZ = (Z_open[1:]-Z_open[:-1]).reshape((1, 1, -1))/sub_resZ
+    deltay = Y_open[1:]-Y_open[:-1]
+    deltax = X_open[1:]-X_open[:-1]
+    deltaz = Z_open[1:]-Z_open[:-1]
     
     #
-    # Loop on all sub grids
+    # Loop on all voxels
     #
-    I = np.empty((subgrid_size, Y.size), dtype=np.int16)
-    D = np.empty((subgrid_size, Y.size), dtype=np.float32)
-    for i, (dy, dx, dz) in enumerate(itertools.product(range(sub_resY), range(sub_resX), range(sub_resZ))):
+    data = []
+    indices = []
+    indptr = [0]
+    i = 0
+    for y, x, z, py, px, pz, (dy, dx, dz) in \
+        itertools.izip(Y.ravel(), X.ravel(), Z.ravel(), Py.ravel(), Px.ravel(), Pz.ravel(), itertools.product(deltay, deltax, deltaz)):
+
+        #
+        # Create the sub grids
+        #
+        dY, dX, dZ = np.mgrid[0:1:1/py, 0:1:1/px, 0:1:1/pz]
+        
         #
         # Advance to next sub grid position
         #
-        subY = Y + dY*dy + (np.random.rand(*Y.shape)-0.5) * noise
-        subX = X + dX*dx + (np.random.rand(*Y.shape)-0.5) * noise
-        subZ = Z + dZ*dz + (np.random.rand(*Y.shape)-0.5) * noise
+        subY = y + (dY + (np.random.rand(*dY.shape)-0.5) * noise) * dy
+        subX = x + (dX + (np.random.rand(*dY.shape)-0.5) * noise) * dx
+        subZ = z + (dZ + (np.random.rand(*dY.shape)-0.5) * noise) * dz
         
         #
         # Project the grids to the image space
@@ -199,7 +141,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         #
         # Note:
         # Non valid values are set to NaN. When converting to np.int, the NaN values
-        # become negative (min interger value). These are ignored in the count_unique
+        # become zero (when turned to in16). These are ignored in the count_unique
         # function.
         #
         R_sensor = THETA / np.pi * 2
@@ -208,28 +150,20 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         X_sensor = R_sensor * np.cos(PHI)
         
         #
-        # Calculate index of image pixel
+        # Calculate index of target image pixel and distance to camera
         #
         Y_index = ((Y_sensor + 1)*image_res/2).astype(np.int16)
         X_index = ((X_sensor + 1)*image_res/2).astype(np.int16)
-        I[i, :] = (Y_index * image_res + X_index).ravel()
-        D[i, :] = 1/(subR2.ravel() + eps32)
+        sub_indices = (Y_index * image_res + X_index).ravel()
+        sub_dists = 1/(subR2.ravel() + eps32)
         
-    print 'end first stage %s' % time.asctime()
-    
-    #
-    # Calculate the unique indices
-    #
-    data = []
-    indices = []
-    indptr = [0]
-    for j in xrange(I.shape[1]):
-        inds, dists = count_unique(I[:, j], D[:, j])
-        data.append(dists / subgrid_size)
+        inds, dists = count_unique(sub_indices, sub_dists)
+        data.append(dists / subY.size)
         indices.append(inds)
         indptr.append(indptr[-1]+inds.size)
-        
-    print 'end second stage %s' % time.asctime()
+
+    print 'end first stage %s' % time.asctime()
+    
     
     #
     # Create sparse matrix
@@ -242,7 +176,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=None, noise=0)
         shape=(Y.size, image_res*image_res)
     )
     
-    print 'end third stage %s' % time.asctime()
+    print 'end second stage %s' % time.asctime()
 
     #
     # Transpose matrix

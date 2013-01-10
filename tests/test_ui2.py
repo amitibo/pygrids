@@ -33,9 +33,9 @@ class MyDialog(HasTraits):
     scene2 = Instance(MlabSceneModel, ())
 
     # The parameters for the Lorenz system, defaults to the standard ones.
-    x = Range(0, 400., 200, desc='pixel coord x', enter_set=True,
+    x = Range(0, 50., 25, desc='pixel coord x', enter_set=True,
               auto_set=False)
-    y = Range(0, 400., 200, desc='pixel coord y', enter_set=True,
+    y = Range(0, 50., 25, desc='pixel coord y', enter_set=True,
               auto_set=False)
 
     z = Range(0, 10., 5, desc='pixel coord z', enter_set=True,
@@ -73,8 +73,8 @@ class MyDialog(HasTraits):
         # Do not forget to call the parent's __init__
         HasTraits.__init__(self)
         
-        data = sio.loadmat('img5')
-        self.H = data['H3']
+        data = sio.loadmat('img_max50')
+        self.H = data['H1']
         
     @on_trait_change('scene1.activated')
     def create_scene(self):
@@ -105,7 +105,7 @@ class MyDialog(HasTraits):
         mlab.colorbar()
         
     def _points_default(self):
-        y, x, z = np.mgrid[0:400:4., 0:400:4., 0:10:0.1]
+        y, x, z = np.mgrid[0:50:1., 0:50:1., 0:10:0.1]
         return y, x, z
 
 

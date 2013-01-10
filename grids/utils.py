@@ -135,6 +135,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), 
         #
         subr2 = subY**2 + subX**2
         subR2 = subr2 + subZ**2
+        subR2[subR2<0.05] = 0.05
         THETA = np.arctan2(np.sqrt(subr2), subZ)
         PHI = np.arctan2(subY, subX)
         
@@ -155,7 +156,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), 
         Y_index = ((Y_sensor + 1)*image_res/2).astype(np.int16)
         X_index = ((X_sensor + 1)*image_res/2).astype(np.int16)
         sub_indices = (Y_index * image_res + X_index).ravel()
-        sub_dists = 1/(subR2.ravel() + eps32)
+        sub_dists = 1/subR2.ravel()
         
         inds, dists = count_unique(sub_indices, sub_dists)
         data.append(dists / subY.size)

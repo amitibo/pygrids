@@ -24,7 +24,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(10, 10, 1),
+    subgrid_res=(50, 50, 10),
     grid_noise=0.01
 )
 
@@ -81,8 +81,8 @@ def integrate():
         X,
         H,
         camera_params.image_res,
-        subgrid_res=camera_params.subgrid_res,
-        noise=camera_params.grid_noise
+        subgrid_max=camera_params.subgrid_res,
+        subgrid_noise=camera_params.grid_noise
     )
     
     x = np.ones(Y.shape)

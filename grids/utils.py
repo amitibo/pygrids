@@ -6,7 +6,7 @@ import numpy as np
 import scipy.sparse as sps
 import itertools
 import amitibo
-import time
+
 
 eps = np.finfo(np.float).eps
 eps32 = np.finfo(np.float32).eps
@@ -66,41 +66,42 @@ def count_unique(keys, dists):
     return uniq_keys, uniq_dists
 
 
-def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), noise=0):
+def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_noise=0, subgrid_min=(2, 2, 2), subgrid_max=(50, 50, 50), min_radius=0.05):
     
     dummy, (Y_open, X_open, Z_open) = processGrids((Y, X, Z))
     
     del dummy
     
+    #
+    # Center the grids
+    #
     Y = Y - camera_center[0]
     X = X - camera_center[1]
     Z = Z - camera_center[2]
     
+    #
+    # Calculate the distace from each camera to each voxel (in voxels)
+    #
     Y1, X1, Z1 = np.mgrid[0:Y.shape[0], 0:Y.shape[1], 0:Y.shape[2]]
     Y1 -= np.searchsorted(Y_open, camera_center[0])
     X1 -= np.searchsorted(X_open, camera_center[1])
     Z1 -= np.searchsorted(Z_open, camera_center[2])
-    R = np.sqrt(Y1**2 + X1**2 + Z1**2)
+    P = 1/(np.sqrt(Y1**2 + X1**2 + Z1**2) + eps)
+    P[P>1] = 1
     
     del Y1, X1, Z1
     
     #
-    # Calculate the subpixel density
+    # Calculate the subgrid density
     #
-    P = (100/(R+eps)).astype(np.int)
-    sub_resY, sub_resX, sub_resZ = subgrid_res
-    Py = P * sub_resY
-    Px = P * sub_resX
-    Pz = P * sub_resZ
+    Py = (P * subgrid_max[0]).astype(np.int)
+    Px = (P * subgrid_max[1]).astype(np.int)
+    Pz = (P * subgrid_max[2]).astype(np.int)
     
-    Py[Py>100] = 50
-    Py[Py<2] = 2
-    Px[Px>100] = 50
-    Px[Px<2] = 2
-    Pz[Pz>100] = 50
-    Pz[Pz<2] = 2
+    Py[Py<subgrid_min[0]] = subgrid_min[0]
+    Px[Px<subgrid_min[1]] = subgrid_min[1]
+    Pz[Pz<subgrid_min[2]] = subgrid_min[2]
 
-    
     #
     # Calculate sub grids
     #
@@ -117,25 +118,32 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), 
     i = 0
     for y, x, z, py, px, pz, (dy, dx, dz) in \
         itertools.izip(Y.ravel(), X.ravel(), Z.ravel(), Py.ravel(), Px.ravel(), Pz.ravel(), itertools.product(deltay, deltax, deltaz)):
-
         #
-        # Create the sub grids
-        #
-        dY, dX, dZ = np.mgrid[0:1:1/py, 0:1:1/px, 0:1:1/pz]
+        # y, x, z    - The current voxel coordinates (relative to the camera)
+        # py, px, pz - The resolution of the subgrid at the currect voxel.
+        # dy, dx, dz - The size of the current voxel
+        # 
         
         #
-        # Advance to next sub grid position
+        # Create the sub grids of the current voxel
+        # dY, dX, dZ - Relative coordinates of the subgrid
         #
-        subY = y + (dY + (np.random.rand(*dY.shape)-0.5) * noise) * dy
-        subX = x + (dX + (np.random.rand(*dY.shape)-0.5) * noise) * dx
-        subZ = z + (dZ + (np.random.rand(*dY.shape)-0.5) * noise) * dz
+        dY, dX, dZ = np.mgrid[0:py, 0:px, 0:pz]
+        
+        #
+        # Calculate the subgrid coordinates with noise
+        # A uniformly distributed noise in the size of the subgrid multiplied by subgrid_noise
+        #
+        subY = y + (dY + (np.random.rand(*dY.shape)-0.5) * subgrid_noise) / py * dy
+        subX = x + (dX + (np.random.rand(*dY.shape)-0.5) * subgrid_noise) / px * dx
+        subZ = z + (dZ + (np.random.rand(*dY.shape)-0.5) * subgrid_noise) / pz * dz
         
         #
         # Project the grids to the image space
         #
         subr2 = subY**2 + subX**2
         subR2 = subr2 + subZ**2
-        subR2[subR2<0.05] = 0.05
+        subR2[subR2<min_radius] = min_radius
         THETA = np.arctan2(np.sqrt(subr2), subZ)
         PHI = np.arctan2(subY, subX)
         
@@ -163,9 +171,6 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), 
         indices.append(inds)
         indptr.append(indptr[-1]+inds.size)
 
-    print 'end first stage %s' % time.asctime()
-    
-    
     #
     # Create sparse matrix
     #
@@ -177,8 +182,6 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_res=(10, 10, 10), 
         shape=(Y.size, image_res*image_res)
     )
     
-    print 'end second stage %s' % time.asctime()
-
     #
     # Transpose matrix
     #

@@ -141,7 +141,7 @@ cdef calcCrossings(
     if points_num == 0:
         tmpd = 0
         for i in range(3):
-            tmpd += (d[i] - d[i])**2
+            tmpd += d[i]**2
         r[0] = sqrt(tmpd)
         indices[0] = dimz*(dimx*(y_i0-1) + x_i0-1) + z_i0-1
         return np_r, np_indices

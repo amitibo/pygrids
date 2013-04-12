@@ -192,7 +192,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_noise=0, subgrid_m
     return H_int
 
 
-def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, angle_noise=0.01):
+def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, replicate=4):
     
     #
     # Center the grids
@@ -210,20 +210,32 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, an
     #
     Y_img, step = np.linspace(-1.0, 1.0, img_res, endpoint=False, retstep=True)
     X_img = np.linspace(-1.0, 1.0, img_res, endpoint=False)
-    X_img, Y_img = np.meshgrid(X_img+step/2, Y_img+step/2)
+    X_img, Y_img = np.meshgrid(X_img, Y_img)
+
+    #
+    # Randomly replicate rays inside each pixel
+    #
+    X_img = np.tile(X_img[:, :, np.newaxis], [1, 1, replicate])
+    Y_img = np.tile(Y_img[:, :, np.newaxis], [1, 1, replicate])
+    X_img += np.random.rand(*X_img.shape)*step
+    Y_img += np.random.rand(*Y_img.shape)*step
+    
+    #
+    # Calculate rays angles
+    #
     R_img = np.sqrt(X_img**2 + Y_img**2)
-    THETA_ray = R_img * np.pi /2 + np.random.randn(*R_img.shape) * angle_noise
-    PHI_ray = np.arctan2(Y_img, X_img) + np.random.randn(*R_img.shape) * angle_noise
+    THETA_ray = R_img * np.pi /2
+    PHI_ray = np.arctan2(Y_img, X_img)
     DY_ray = np.sin(THETA_ray) * np.sin(PHI_ray)
     DX_ray = np.sin(THETA_ray) * np.cos(PHI_ray)
     DZ_ray = np.cos(THETA_ray)
     
     #
-    # Calculate ray samples
+    # Calculate sample steps along ray
     #
     R_max = np.max(np.sqrt(Y**2 + X**2 + Z**2))
     R_samples, R_step = np.linspace(0.0, R_max, samples_num, retstep=True)
-    R_samples = R_samples[1:]
+    R_samples = R_samples[1:].reshape((-1, 1))
     R_dither = np.random.rand(R_img.size) * R_step * dither_noise
         
     #
@@ -233,17 +245,26 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, an
     indices = []
     indptr = [0]
     cnt = 0
-    for r, dy, dx, dz, r_dither in itertools.izip(R_img.ravel(), DY_ray.ravel(), DX_ray.ravel(), DZ_ray.ravel(), R_dither.ravel()):
+    for r, dy, dx, dz, r_dither in itertools.izip(
+        R_img.reshape((-1, replicate)),
+        DY_ray.reshape((-1, replicate)),
+        DX_ray.reshape((-1, replicate)),
+        DZ_ray.reshape((-1, replicate)),
+        R_dither.ravel(),
+        ):
         print cnt, r_dither
         cnt += 1
         
-        if r > 1:
+        if np.all(r > 1):
             indptr.append(indptr[-1])
             continue
         
         #
-        # 'Dither' the ray
+        # Filter steps where r > 1
         #
+        dy = dy[r<=1]
+        dx = dx[r<=1]
+        dz = dz[r<=1]
         
         #
         # Convert the ray samples to volume indices
@@ -255,9 +276,9 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, an
         #
         # Calculate the atmosphere indices
         #
-        Y_indices = np.searchsorted(Y_atmo, Y_ray)
-        X_indices = np.searchsorted(X_atmo, X_ray)
-        Z_indices = np.searchsorted(Z_atmo, Z_ray)
+        Y_indices = np.searchsorted(Y_atmo, Y_ray.ravel())
+        X_indices = np.searchsorted(X_atmo, X_ray.ravel())
+        Z_indices = np.searchsorted(Z_atmo, Z_ray.ravel())
         
         #
         # Calculate unique indices
@@ -275,7 +296,7 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, an
         #
         # Calculate weights
         #
-        uniq_indices, inv_indices = np.unique(inds_ray, return_index=True)
+        uniq_indices, inv_indices = np.unique(inds_ray, return_inverse=True)
 
         weights = []
         for i, ind in enumerate(uniq_indices):
@@ -308,7 +329,7 @@ if __name__ == '__main__':
 
     Y, X, Z = np.mgrid[0:50000:1000, 0:50000:1000, 0:10000:100]
     img_res = 128
-    camera_center = (25001, 25001, 1)
+    camera_center = (25050, 25050, 50)
     samples_num = 1000
     
     atmo = np.zeros_like(Y)
@@ -321,3 +342,4 @@ if __name__ == '__main__':
     
     plt.imshow(img)
     plt.show()
+    pass

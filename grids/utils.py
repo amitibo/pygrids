@@ -192,7 +192,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_noise=0, subgrid_m
     return H_int
 
 
-def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
+def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, angle_noise=0.01):
     
     #
     # Center the grids
@@ -212,18 +212,20 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
     X_img = np.linspace(-1.0, 1.0, img_res, endpoint=False)
     X_img, Y_img = np.meshgrid(X_img+step/2, Y_img+step/2)
     R_img = np.sqrt(X_img**2 + Y_img**2)
-    THETA_ray = R_img * np.pi /2
-    PHI_ray = np.arctan2(Y_img, X_img)
-    DY_ray = Y_img / R_img
-    DX_ray = X_img / R_img
+    THETA_ray = R_img * np.pi /2 + np.random.randn(*R_img.shape) * angle_noise
+    PHI_ray = np.arctan2(Y_img, X_img) + np.random.randn(*R_img.shape) * angle_noise
+    DY_ray = np.sin(THETA_ray) * np.sin(PHI_ray)
+    DX_ray = np.sin(THETA_ray) * np.cos(PHI_ray)
     DZ_ray = np.cos(THETA_ray)
     
     #
     # Calculate ray samples
     #
     R_max = np.max(np.sqrt(Y**2 + X**2 + Z**2))
-    R_samples = np.linspace(0.0, R_max, samples_num)[1:]
-    
+    R_samples, R_step = np.linspace(0.0, R_max, samples_num, retstep=True)
+    R_samples = R_samples[1:]
+    R_dither = np.random.rand(R_img.size) * R_step * dither_noise
+        
     #
     # Loop on all rays
     #
@@ -231,14 +233,8 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
     indices = []
     indptr = [0]
     cnt = 0
-    xmlab = []
-    ymlab = []
-    zmlab = []
-    vmlab = []
-    filt_weights = []
-    filt_indices = []
-    for r, dy, dx, dz in itertools.izip(R_img.ravel(), DY_ray.ravel(), DX_ray.ravel(), DZ_ray.ravel()):
-        print cnt
+    for r, dy, dx, dz, r_dither in itertools.izip(R_img.ravel(), DY_ray.ravel(), DX_ray.ravel(), DZ_ray.ravel(), R_dither.ravel()):
+        print cnt, r_dither
         cnt += 1
         
         if r > 1:
@@ -252,9 +248,9 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
         #
         # Convert the ray samples to volume indices
         #
-        Y_ray = R_samples * dy
-        X_ray = R_samples * dx
-        Z_ray = R_samples * dz
+        Y_ray = (r_dither+R_samples) * dy
+        X_ray = (r_dither+R_samples) * dx
+        Z_ray = (r_dither+R_samples) * dz
         
         #
         # Calculate the atmosphere indices
@@ -274,11 +270,6 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
         X_indices = X_indices[Y_filter*X_filter*Z_filter]-1
         Z_indices = Z_indices[Y_filter*X_filter*Z_filter]-1
 
-        if cnt % 23 == 0:
-            xmlab.append(X_indices)
-            ymlab.append(Y_indices)
-            zmlab.append(Z_indices)
-            
         inds_ray = (Y_indices*Y.shape[1] + X_indices)*Y.shape[2] + Z_indices
         
         #
@@ -297,16 +288,6 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num):
         indices.append(uniq_indices)
         indptr.append(indptr[-1]+uniq_indices.size)
 
-        if cnt % 20 == 0:
-            filt_indices.append(uniq_indices)
-            filt_weights.append(weights)
-            
-    xmlab = np.concatenate(xmlab)
-    ymlab = np.concatenate(ymlab)
-    zmlab = np.concatenate(zmlab)
-    filt_indices = np.concatenate(filt_indices)
-    filt_weights = np.concatenate(filt_weights)
-    
     #
     # Create sparse matrix
     #

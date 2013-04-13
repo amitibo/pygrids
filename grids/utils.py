@@ -192,7 +192,7 @@ def integrateGrids(camera_center, Y, X, Z, image_res, subgrid_noise=0, subgrid_m
     return H_int
 
 
-def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, replicate=4):
+def rayCasting(camera_center, Y, X, Z, img_res, samples_num=1000, dither_noise=10, replicate=4):
     
     #
     # Center the grids
@@ -244,7 +244,6 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, re
     data = []
     indices = []
     indptr = [0]
-    cnt = 0
     for r, dy, dx, dz, r_dither in itertools.izip(
         R_img.reshape((-1, replicate)),
         DY_ray.reshape((-1, replicate)),
@@ -252,9 +251,7 @@ def rayCasting(Y, X, Z, img_res, camera_center, samples_num, dither_noise=10, re
         DZ_ray.reshape((-1, replicate)),
         R_dither.ravel(),
         ):
-        print cnt, r_dither
-        cnt += 1
-        
+
         if np.all(r > 1):
             indptr.append(indptr[-1])
             continue
@@ -336,7 +333,7 @@ if __name__ == '__main__':
     R = (Y-50000/3)**2/16 + (X-50000*2/3)**2/16 + (Z-10000/4)**2*8
     atmo[R<4000**2] = 1
 
-    H_int = rayCasting(Y, X, Z, img_res, camera_center, samples_num)
+    H_int = rayCasting(camera_center, Y, X, Z, img_res, samples_num)
 
     img = (H_int * atmo.reshape((-1, 1))).reshape((img_res, img_res))
     

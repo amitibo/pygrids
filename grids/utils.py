@@ -5,7 +5,6 @@ from __future__ import division
 import numpy as np
 import scipy.sparse as sps
 import itertools
-import amitibo
 
 eps = np.finfo(np.float).eps
 eps32 = np.finfo(np.float32).eps
@@ -207,6 +206,7 @@ def rayCasting(camera_center, Y, X, Z, img_res, samples_num=1000, dither_noise=1
     
     #
     # Convert image pixels to ray direction
+    # The image is assumed the [-1, 1]x[-1, 1] square.
     #
     Y_img, step = np.linspace(-1.0, 1.0, img_res, endpoint=False, retstep=True)
     X_img = np.linspace(-1.0, 1.0, img_res, endpoint=False)
@@ -222,6 +222,9 @@ def rayCasting(camera_center, Y, X, Z, img_res, samples_num=1000, dither_noise=1
     
     #
     # Calculate rays angles
+    # R_img is the radius from the center of the image (0, 0) to the
+    # pixel. It is used for calculating th ray direction (PHI, THETA)
+    # and for filtering pixels outside the image (radius > 1).
     #
     R_img = np.sqrt(X_img**2 + Y_img**2)
     THETA_ray = R_img * np.pi /2
@@ -320,8 +323,150 @@ def rayCasting(camera_center, Y, X, Z, img_res, samples_num=1000, dither_noise=1
     return H_int
 
 
-if __name__ == '__main__':
+def cartesian2radial(camera_center, Y, X, Z, img_res, radius_bins, samples_num=1000, dither_noise=10, replicate=4):
     
+    #
+    # Center the grids
+    #
+    Y = Y - camera_center[0]
+    X = X - camera_center[1]
+    Z = Z - camera_center[2]
+    
+    dummy, (Y_atmo, X_atmo, Z_atmo) = processGrids((Y, X, Z))
+    
+    del dummy
+    
+    #
+    # Convert image pixels to ray direction
+    # The image is assumed the [-1, 1]x[-1, 1] square.
+    #
+    Y_img, step = np.linspace(-1.0, 1.0, img_res, endpoint=False, retstep=True)
+    X_img = np.linspace(-1.0, 1.0, img_res, endpoint=False)
+    X_img, Y_img = np.meshgrid(X_img, Y_img)
+
+    #
+    # Randomly replicate rays inside each pixel
+    #
+    X_img = np.tile(X_img[:, :, np.newaxis], [1, 1, replicate])
+    Y_img = np.tile(Y_img[:, :, np.newaxis], [1, 1, replicate])
+    X_img += np.random.rand(*X_img.shape)*step
+    Y_img += np.random.rand(*Y_img.shape)*step
+    
+    #
+    # Calculate rays angles
+    # R_img is the radius from the center of the image (0, 0) to the
+    # pixel. It is used for calculating th ray direction (PHI, THETA)
+    # and for filtering pixels outside the image (radius > 1).
+    #
+    R_img = np.sqrt(X_img**2 + Y_img**2)
+    THETA_ray = R_img * np.pi /2
+    PHI_ray = np.arctan2(Y_img, X_img)
+    DY_ray = np.sin(THETA_ray) * np.sin(PHI_ray)
+    DX_ray = np.sin(THETA_ray) * np.cos(PHI_ray)
+    DZ_ray = np.cos(THETA_ray)
+    
+    #
+    # Calculate sample steps along ray
+    #
+    R_max = np.max(np.sqrt(Y**2 + X**2 + Z**2))
+    R_samples, R_step = np.linspace(0.0, R_max, samples_num, retstep=True)
+    R_samples = R_samples[1:]
+    R_dither = np.random.rand(R_img.size) * R_step * dither_noise
+    
+    #
+    # Calculate radius bins
+    #
+    R_bins = np.logspace(np.log10(R_samples[0]), np.log10(R_samples[-1]+1), radius_bins+1)-1
+    samples_bin = np.digitize(R_samples, R_bins)
+    samples_array = []
+    for i in range(1, radius_bins+1):
+        samples_array.append(R_samples[samples_bin==i].reshape((-1, 1)))
+    
+    #
+    # Loop on all rays
+    #
+    data = []
+    indices = []
+    indptr = [0]
+    for r, dy, dx, dz, r_dither in itertools.izip(
+        R_img.reshape((-1, replicate)),
+        DY_ray.reshape((-1, replicate)),
+        DX_ray.reshape((-1, replicate)),
+        DZ_ray.reshape((-1, replicate)),
+        R_dither.ravel(),
+        ):
+
+        if np.all(r > 1):
+            for i in range(radius_bins):
+                indptr.append(indptr[-1])
+            continue
+        
+        #
+        # Filter steps where r > 1
+        #
+        dy = dy[r<=1]
+        dx = dx[r<=1]
+        dz = dz[r<=1]
+        
+        for samples in samples_array:
+            #
+            # Convert the ray samples to volume indices
+            #
+            Y_ray = (r_dither+samples) * dy
+            X_ray = (r_dither+samples) * dx
+            Z_ray = (r_dither+samples) * dz
+            
+            #
+            # Calculate the atmosphere indices
+            #
+            Y_indices = np.searchsorted(Y_atmo, Y_ray.ravel())
+            X_indices = np.searchsorted(X_atmo, X_ray.ravel())
+            Z_indices = np.searchsorted(Z_atmo, Z_ray.ravel())
+            
+            #
+            # Calculate unique indices
+            #
+            Y_filter = (Y_indices > 0) * (Y_indices < Y_atmo.size)
+            X_filter = (X_indices > 0) * (X_indices < X_atmo.size)
+            Z_filter = (Z_indices > 0) * (Z_indices < Z_atmo.size)
+            
+            Y_indices = Y_indices[Y_filter*X_filter*Z_filter]-1
+            X_indices = X_indices[Y_filter*X_filter*Z_filter]-1
+            Z_indices = Z_indices[Y_filter*X_filter*Z_filter]-1
+    
+            inds_ray = (Y_indices*Y.shape[1] + X_indices)*Y.shape[2] + Z_indices
+            
+            #
+            # Calculate weights
+            #
+            uniq_indices, inv_indices = np.unique(inds_ray, return_inverse=True)
+    
+            weights = []
+            for i, ind in enumerate(uniq_indices):
+                weights.append((inv_indices == i).sum())
+            
+            #
+            # Sum up the indices and weights
+            #
+            data.append(weights)
+            indices.append(uniq_indices)
+            indptr.append(indptr[-1]+uniq_indices.size)
+    
+    #
+    # Create sparse matrix
+    #
+    data = np.hstack(data)
+    indices = np.hstack(indices)
+
+    H_int = sps.csr_matrix(
+        (data, indices, indptr),
+        shape=(img_res*img_res*radius_bins, Y.size)
+    )
+    
+    return H_int
+
+
+def test_rayCasting():
     import matplotlib.pyplot as plt
 
     Y, X, Z = np.mgrid[0:50000:1000, 0:50000:1000, 0:10000:100]
@@ -339,4 +484,34 @@ if __name__ == '__main__':
     
     plt.imshow(img)
     plt.show()
-    pass
+
+    
+def test_cartesian2radial():
+    Y, X, Z = np.mgrid[0:50000:1000, 0:50000:1000, 0:10000:100]
+    img_res = 128
+    radius_bins = 20
+    camera_center = (25050, 25050, 50)
+    samples_num = 2000
+    
+    atmo = np.zeros_like(Y)
+    R = (Y-50000/3)**2/16 + (X-50000*2/3)**2/16 + (Z-10000/4)**2*8
+    atmo[R<4000**2] = 1
+
+    H_int = cartesian2radial(camera_center, Y, X, Z, img_res, radius_bins, samples_num)
+
+    atmo_radial = (H_int * atmo.reshape((-1, 1))).reshape((img_res, img_res, radius_bins))
+    
+    import amitibo
+    import mayavi.mlab as mlab
+    
+    Y_rad, X_rad, Z_rad = np.mgrid[0:img_res:1, 0:img_res:1, 0:radius_bins:1]
+    
+    amitibo.viz3D(Y, X, Z, atmo)
+    amitibo.viz3D(Y_rad, X_rad, Z_rad, atmo_radial)
+    
+    mlab.show()
+
+    
+if __name__ == '__main__':
+    
+    test_cartesian2radial()

@@ -7,7 +7,7 @@ cimport numpy as np
 import cython
 from cpython cimport bool
 from libc.math cimport sqrt
-from .utils import processGrids, limitDGrids
+from .base import processGrids, limitDGrids
 
 DTYPEd = np.double
 ctypedef np.double_t DTYPEd_t
